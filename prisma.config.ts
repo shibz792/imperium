@@ -8,7 +8,13 @@ export default defineConfig({
   migrations: {
     path: "prisma/migrations",
   },
+  // CLI operations (generate/db push/migrate) go through DIRECT_URL, not
+  // DATABASE_URL — Supabase's transaction-mode pooler (port 6543) doesn't
+  // preserve the session state the schema engine needs and just hangs.
+  // The running app never reads this file at all: src/lib/prisma.ts builds
+  // its own PrismaPg adapter straight off DATABASE_URL (the pooled
+  // connection), which is what you want for a serverless runtime.
   datasource: {
-    url: process.env["DATABASE_URL"],
+    url: process.env["DIRECT_URL"],
   },
 });

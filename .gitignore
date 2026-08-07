@@ -42,12 +42,11 @@ next-env.d.ts
 
 /src/generated/prisma
 
-# local sqlite database + uploaded documents
+# local SQLite artifacts from before the Supabase Postgres migration
 /prisma/dev.db
 /prisma/dev.db-journal
 /prisma/*.bak-*
-/storage/documents/*
-!/storage/documents/.gitkeep
+/prisma/*pre-supabase*
 
 # AI tool scaffolding, not project code
 /.agents/

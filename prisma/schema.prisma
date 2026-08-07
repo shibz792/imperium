@@ -1,5 +1,7 @@
 // Imperium Realty OS — Prisma schema
-// SQLite for local-first, zero-config running. Swappable for Postgres/PostGIS later.
+// Postgres (Supabase), via the pg driver adapter. Was SQLite for local-first
+// zero-config running, moved to Postgres so writes actually persist on
+// Vercel's serverless runtime instead of vanishing on the next cold start.
 
 generator client {
   provider = "prisma-client"
@@ -7,7 +9,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
 }
 
 // ---------------------------------------------------------------------------
