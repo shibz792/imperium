@@ -1,26 +1,241 @@
 @import "tailwindcss";
 
+/* ------------------------------------------------------------------ */
+/* Design tokens                                                       */
+/* A private-ledger aesthetic: hairline rules instead of shadows,      */
+/* serif numerals for anything that represents value (price, score,    */
+/* reference), gold spent only on what is significant. See README §5.  */
+/* ------------------------------------------------------------------ */
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --color-navy: #091526;
+  --color-navy-light: #101f36;
+  --color-slate-navy: #27354a;
+  --color-gold: #cca274;
+  --color-gold-light: #ddbd97;
+  --color-gold-dark: #a97f56;
+  --color-ivory: #f5f2ed;
+  --color-ivory-deep: #ece7de;
+  --color-white: #ffffff;
+
+  /* Semantic tones — muted, brand-derived. Never a stock Tailwind
+     red/green/blue; "no generic blue SaaS interface" per brand brief. */
+  --color-forest: #3f6c51;
+  --color-forest-tint: #eaf0ea;
+  --color-bronze: #92601f;
+  --color-bronze-tint: #f6ede0;
+  --color-brick: #8c4a3e;
+  --color-brick-tint: #f5eae8;
+  --color-slate-tint: #eaedf1;
+
+  --background: var(--color-ivory);
+  --foreground: var(--color-navy);
 }
 
 @theme inline {
+  --color-ir-navy: var(--color-navy);
+  --color-ir-navy-light: var(--color-navy-light);
+  --color-ir-slate: var(--color-slate-navy);
+  --color-ir-gold: var(--color-gold);
+  --color-ir-gold-light: var(--color-gold-light);
+  --color-ir-gold-dark: var(--color-gold-dark);
+  --color-ir-ivory: var(--color-ivory);
+  --color-ir-ivory-deep: var(--color-ivory-deep);
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-jakarta);
+  --font-serif: var(--font-fraunces);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+/* IMPORTANT: everything below lives inside `@layer base` / `@layer
+   components` on purpose. Tailwind's own utilities live in `@layer
+   utilities`, and in CSS, an UNLAYERED rule beats every layered rule
+   regardless of specificity — so any plain (unlayered) selector here
+   would silently out-rank `border-red-500` or any other Tailwind
+   utility class applied alongside it. Verified by inspecting computed
+   styles (a badge's border was rendering fully transparent) — not
+   something a screenshot alone would catch. Keep new global CSS inside
+   a layer; `@layer components` in particular lets a one-off Tailwind
+   utility on an element still override the component's own default. */
+
+@layer base {
+  body {
+    background: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-jakarta), ui-sans-serif, system-ui, sans-serif;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-gold-dark);
+    outline-offset: 2px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+
+  ::selection {
+    background: rgba(204, 162, 116, 0.35);
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: rgba(9, 21, 38, 0.15);
+    border-radius: 999px;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* ------------------------------------------------------------------ */
+/* Shared component recipes — kept here rather than duplicated with   */
+/* Tailwind utility soup in every file.                                */
+/* ------------------------------------------------------------------ */
+
+@layer components {
+  .ir-label {
+    font-size: 0.6875rem;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: rgba(9, 21, 38, 0.48);
+  }
+
+  /* The signature treatment: serif, tabular figures, for every number
+     that represents value — prices, match scores, stat tiles, refs. */
+  .ir-figure {
+    font-family: var(--font-fraunces), Georgia, serif;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum";
+  }
+
+  .ir-card {
+    background: var(--color-white);
+    border: 1px solid rgba(9, 21, 38, 0.09);
+    border-radius: 0.25rem;
+  }
+
+  .ir-card-hover {
+    transition: border-color 0.18s ease, transform 0.18s ease, box-shadow 0.18s ease;
+  }
+  .ir-card-hover:hover {
+    border-color: rgba(204, 162, 116, 0.55);
+    box-shadow: 0 1px 2px rgba(9, 21, 38, 0.04), 0 8px 20px -12px rgba(9, 21, 38, 0.18);
+  }
+
+  .ir-editorial {
+    font-family: var(--font-fraunces), Georgia, serif;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+
+  /* Thin gold rule — the one recurring accent motif. Used under eyebrows,
+     between hero sections, as a divider of significance rather than a
+     plain neutral <hr>. */
+  .ir-rule-gold {
+    height: 1px;
+    background: linear-gradient(90deg, var(--color-gold) 0%, rgba(204, 162, 116, 0.15) 55%, transparent 100%);
+  }
+
+  .ir-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    border-radius: 0.1875rem;
+    padding: 0.5rem 1rem;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    letter-spacing: 0.005em;
+    transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, transform 0.1s ease;
+    white-space: nowrap;
+  }
+  .ir-btn:active {
+    transform: translateY(0.5px);
+  }
+
+  .ir-btn-primary {
+    background: var(--color-navy);
+    color: var(--color-white);
+  }
+  .ir-btn-primary:hover {
+    background: var(--color-navy-light);
+  }
+
+  .ir-btn-gold {
+    background: var(--color-gold);
+    color: var(--color-navy);
+  }
+  .ir-btn-gold:hover {
+    background: var(--color-gold-dark);
+    color: var(--color-white);
+  }
+
+  .ir-btn-ghost {
+    background: transparent;
+    color: var(--color-navy);
+    border: 1px solid rgba(9, 21, 38, 0.16);
+  }
+  .ir-btn-ghost:hover {
+    border-color: var(--color-navy);
+    background: rgba(9, 21, 38, 0.025);
+  }
+
+  .ir-btn-danger {
+    background: transparent;
+    color: var(--color-brick);
+    border: 1px solid rgba(140, 74, 62, 0.3);
+  }
+  .ir-btn-danger:hover {
+    background: var(--color-brick-tint);
+  }
+
+  .ir-input {
+    width: 100%;
+    border: 1px solid rgba(9, 21, 38, 0.15);
+    border-radius: 0.1875rem;
+    padding: 0.5rem 0.65rem;
+    font-size: 0.875rem;
+    background: var(--color-white);
+    color: var(--color-navy);
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  }
+  .ir-input:focus {
+    outline: none;
+    border-color: var(--color-gold-dark);
+    box-shadow: 0 0 0 3px rgba(204, 162, 116, 0.18);
+  }
+
+  .ir-select {
+    width: 100%;
+    border: 1px solid rgba(9, 21, 38, 0.15);
+    border-radius: 0.1875rem;
+    padding: 0.5rem 0.65rem;
+    font-size: 0.875rem;
+    background: var(--color-white);
+    color: var(--color-navy);
+  }
+
+  /* Bordered tag, not a filled pill — reads as a museum object label
+     rather than a SaaS status bubble. Tone sets border/text; fill stays
+     a faint tint of the same hue. */
+  .ir-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    border-radius: 0.125rem;
+    border-width: 1px;
+    border-style: solid;
+    padding: 0.14rem 0.5rem;
+    font-size: 0.65rem;
+    font-weight: 600;
+    letter-spacing: 0.045em;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
 }

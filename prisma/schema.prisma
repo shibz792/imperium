@@ -1,0 +1,700 @@
+// Imperium Realty OS — Prisma schema
+// SQLite for local-first, zero-config running. Swappable for Postgres/PostGIS later.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+// ---------------------------------------------------------------------------
+// Identity & access
+// ---------------------------------------------------------------------------
+
+enum Role {
+  SUPER_ADMIN
+  DIRECTOR
+  SALES_MANAGER
+  AGENT
+  MARKETING
+  LEGAL
+  FINANCE
+  EXTERNAL_BROKER
+  OWNER_PORTAL
+  CLIENT_PORTAL
+}
+
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  username     String   @unique
+  passwordHash String
+  role         Role
+  phone        String?
+  active       Boolean  @default(true)
+  // Agent profile — spec §11/§14 "Agents" roster (title/specialty shown on
+  // the public-facing profile card, territory used for demand-matching).
+  title        String?
+  bio          String?
+  territoryJson Json?
+  createdAt    DateTime @default(now())
+
+  assignedProperties   Property[]       @relation("PropertyAgent")
+  assignedContacts     Contact[]
+  assignedRequirements Requirement[]    @relation("RequirementAgent")
+  assignedDeals        Deal[]           @relation("DealAgent")
+  // Multiple agents can work the same listing/requirement/deal together —
+  // "assigned" is the primary owner, "collaborating" is everyone else on it.
+  collaboratingProperties   Property[]    @relation("PropertyCollaborators")
+  collaboratingRequirements Requirement[] @relation("RequirementCollaborators")
+  collaboratingDeals        Deal[]        @relation("DealCollaborators")
+  viewingsAsAgent      Viewing[]        @relation("ViewingAgent")
+  tasks                Task[]           @relation("TaskAssignee")
+  auditLogs            AuditLog[]
+  activities           Activity[]
+  aiIntakeJobs         AiIntakeJob[]
+  documentsUploaded    Document[]
+  marketingApproved    MarketingAsset[] @relation("MarketingApprover")
+}
+
+// ---------------------------------------------------------------------------
+// Contacts / CRM
+// ---------------------------------------------------------------------------
+
+enum ContactType {
+  OWNER
+  BUYER
+  TENANT
+  BROKER
+  DEVELOPER
+  INVESTOR
+  CORPORATE
+}
+
+// Kept deliberately thin: Sri Lankan lead intake in practice is "name,
+// number, and are they the owner / a company / someone representing them"
+// — not a full legal-contact record. Everything past that (email, address,
+// company name, notes) is optional and tucked behind "more details" in
+// the UI rather than demanded up front.
+enum ContactCapacity {
+  INDIVIDUAL
+  COMPANY
+  REPRESENTATIVE
+}
+
+model Contact {
+  id                String          @id @default(cuid())
+  contactRef        String          @unique
+  name              String
+  capacity          ContactCapacity @default(INDIVIDUAL)
+  companyName       String?
+  contactType       ContactType
+  phone             String
+  whatsapp          String?
+  email             String?
+  address           String?
+  city              String?
+  district          String?
+  source            String?
+  notes             String?
+  confidentialNotes String?
+  assignedAgentId   String?
+  assignedAgent     User?           @relation(fields: [assignedAgentId], references: [id])
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  ownedProperties Property[]    @relation("PropertyOwner")
+  requirements    Requirement[] @relation("RequirementClient")
+  dealsAsClient   Deal[]        @relation("DealClient")
+  dealsAsBroker   Deal[]        @relation("DealOtherBroker")
+  viewings        Viewing[]     @relation("ViewingContact")
+  documents       Document[]
+}
+
+// ---------------------------------------------------------------------------
+// Properties
+// ---------------------------------------------------------------------------
+
+enum PropertyCategory {
+  RESIDENTIAL
+  COMMERCIAL
+  INDUSTRIAL_LOGISTICS
+  LAND_AGRICULTURE
+}
+
+enum TransactionType {
+  SALE
+  RENT
+  LEASE
+  SHORT_TERM_RENTAL
+  INVESTMENT
+  JOINT_VENTURE
+  DEVELOPMENT
+  OFF_MARKET
+}
+
+enum ListingStatus {
+  DRAFT
+  ACTIVE
+  UNDER_OFFER
+  RESERVED
+  SOLD
+  RENTED
+  WITHDRAWN
+  EXPIRED
+}
+
+enum Exclusivity {
+  EXCLUSIVE
+  OPEN
+}
+
+enum LocationVisibility {
+  EXACT
+  APPROXIMATE
+  HIDDEN
+}
+
+enum LegalVerificationStatus {
+  UNVERIFIED
+  IN_PROGRESS
+  VERIFIED
+  ISSUES_FOUND
+}
+
+model Property {
+  id          String  @id @default(cuid())
+  propertyRef String  @unique
+  title       String
+  description String?
+
+  category        PropertyCategory
+  subtype         String
+  transactionType TransactionType
+  listingStatus   ListingStatus @default(DRAFT)
+  exclusivity     Exclusivity   @default(OPEN)
+  source          String?
+  sourceUrl       String? // original listing link when sourced from ikman.lk / LankaPropertyWeb / etc.
+
+  assignedAgentId  String?
+  assignedAgent    User?     @relation("PropertyAgent", fields: [assignedAgentId], references: [id])
+  dateReceived     DateTime  @default(now())
+  lastVerifiedDate DateTime?
+  expiryDate       DateTime?
+
+  // Location
+  province            String?
+  district             String?
+  city                 String?
+  suburb               String?
+  address              String?
+  landmark             String?
+  lat                  Float?
+  lng                  Float?
+  locationVisibility   LocationVisibility @default(APPROXIMATE)
+  roadAccess           String?
+  roadWidthFt          Float?
+  distanceMajorRoadKm  Float?
+
+  // Measurements
+  sizePerches        Float?
+  sizeAcres          Float?
+  sizeRoods           Float?
+  sizeSqft           Float?
+  sizeSqm            Float?
+  builtUpSqft        Float?
+  warehouseFloorSqft Float?
+  frontageFt         Float?
+  buildingHeightFt   Float?
+  clearHeightFt       Float?
+  floors              Int?
+  bedrooms            Int?
+  bathrooms           Int?
+
+  // Pricing
+  totalPrice         Float?
+  priceNegotiable    Boolean @default(true)
+  pricePerPerch      Float?
+  pricePerSqft       Float?
+  monthlyRental       Float?
+  annualLeaseValue    Float?
+  keyMoney            Float?
+  securityDeposit     Float?
+  minLeaseTermMonths  Int?
+  expectedYieldPct    Float?
+  currency            String  @default("LKR")
+  ownerMinPrice       Float?
+  advertisedPrice     Float?
+
+  featuresJson Json?
+
+  // Ownership & documents
+  ownerId                 String?
+  owner                   Contact? @relation("PropertyOwner", fields: [ownerId], references: [id])
+  ownerAuthorityConfirmed Boolean  @default(false)
+  deedAvailable           Boolean  @default(false)
+  surveyPlanAvailable     Boolean  @default(false)
+  cocAvailable            Boolean  @default(false)
+  approvedPlanAvailable   Boolean  @default(false)
+  municipalDocsAvailable  Boolean  @default(false)
+  taxDocsAvailable        Boolean  @default(false)
+  mortgageStatus          String?
+  legalVerificationStatus LegalVerificationStatus @default(UNVERIFIED)
+  internalLegalNotes      String?
+
+  heroImageUrl String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  collaborators   User[]           @relation("PropertyCollaborators")
+  media           PropertyMedia[]
+  documents       Document[]
+  viewings        Viewing[]
+  deals           Deal[]
+  marketingAssets MarketingAsset[]
+  sharePages      SharePage[]
+  activities      Activity[]
+  matchShares     MatchShare[]
+}
+
+enum MediaType {
+  PHOTO
+  VIDEO
+  DRONE
+  FLOOR_PLAN
+  SITE_PLAN
+  TOUR_360
+}
+
+model PropertyMedia {
+  id         String    @id @default(cuid())
+  propertyId String
+  property   Property  @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  url        String
+  type       MediaType
+  branded    Boolean   @default(false)
+  caption    String?
+  createdAt  DateTime  @default(now())
+}
+
+// ---------------------------------------------------------------------------
+// Requirements
+// ---------------------------------------------------------------------------
+
+enum RequirementType {
+  BUYER
+  TENANT
+  CORPORATE_LEASE
+  INVESTOR_MANDATE
+  DEVELOPER_LAND
+  WAREHOUSE
+  HOSPITALITY
+  RELOCATION
+  SELLER_VALUATION
+  OWNER_SEEKING_TENANT
+}
+
+enum DealType {
+  BUY
+  RENT
+  LEASE
+}
+
+enum FinancingStatus {
+  CASH
+  BANK_FINANCE
+  UNCONFIRMED
+}
+
+enum Urgency {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum RequirementQuality {
+  UNVERIFIED
+  QUALIFIED
+  PREMIUM
+}
+
+enum RequirementStatus {
+  NEW
+  UNVERIFIED
+  QUALIFIED
+  ACTIVELY_SEARCHING
+  OPTIONS_SHARED
+  VIEWING_ARRANGED
+  NEGOTIATING
+  ON_HOLD
+  COMPLETED
+  LOST_EXPIRED
+}
+
+model Requirement {
+  id             String          @id @default(cuid())
+  requirementRef String          @unique
+  type           RequirementType
+  clientId       String
+  client         Contact         @relation("RequirementClient", fields: [clientId], references: [id])
+  companyName    String?
+  decisionMaker  String?
+  title          String
+
+  dealType DealType
+  category PropertyCategory
+  subtype  String?
+
+  preferredLocationsJson    Json?
+  acceptableSurroundingJson Json?
+
+  budgetMin Float?
+  budgetMax Float?
+  sizeMin   Float?
+  sizeMax   Float?
+
+  requiredFeaturesJson Json?
+  intendedUse          String?
+  deadline             DateTime?
+
+  financingStatus FinancingStatus    @default(UNCONFIRMED)
+  decisionStage   String?
+  urgency         Urgency            @default(MEDIUM)
+  quality         RequirementQuality @default(UNVERIFIED)
+
+  assignedAgentId String?
+  assignedAgent   User?     @relation("RequirementAgent", fields: [assignedAgentId], references: [id])
+  source          String?
+  lastContacted   DateTime?
+  nextAction      String?
+  nextActionDate  DateTime?
+
+  confidentialNotes String?
+  expiryDate        DateTime?
+  status            RequirementStatus @default(NEW)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  collaborators User[]     @relation("RequirementCollaborators")
+  deals       Deal[]
+  activities  Activity[]
+  matchShares MatchShare[]
+}
+
+// ---------------------------------------------------------------------------
+// Deals pipeline
+// ---------------------------------------------------------------------------
+
+enum DealStage {
+  NEW_INQUIRY
+  CONTACT_ATTEMPTED
+  QUALIFIED
+  SHORTLISTED
+  VIEWING_ARRANGED
+  VIEWING_COMPLETED
+  NEGOTIATION
+  OFFER_SUBMITTED
+  AGREEMENT_PENDING
+  CLOSED_WON
+  CLOSED_LOST
+}
+
+model Deal {
+  id      String @id @default(cuid())
+  dealRef String @unique
+
+  propertyId    String
+  property      Property     @relation(fields: [propertyId], references: [id])
+  requirementId String?
+  requirement   Requirement? @relation(fields: [requirementId], references: [id])
+  clientId      String
+  client        Contact      @relation("DealClient", fields: [clientId], references: [id])
+
+  assignedAgentId String?
+  assignedAgent   User?    @relation("DealAgent", fields: [assignedAgentId], references: [id])
+  otherBrokerId   String?
+  otherBroker     Contact? @relation("DealOtherBroker", fields: [otherBrokerId], references: [id])
+
+  stage                 DealStage @default(NEW_INQUIRY)
+  expectedValue         Float?
+  expectedCommissionPct Float?
+  probability            Int      @default(20)
+  nextAction              String?
+  nextActionDate          DateTime?
+  closingDate             DateTime?
+  lostReason              String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  collaborators User[]     @relation("DealCollaborators")
+  viewings   Viewing[]
+  offers     Offer[]
+  commission Commission?
+  activities Activity[]
+}
+
+enum ViewingStatus {
+  SCHEDULED
+  CONFIRMED
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+}
+
+model Viewing {
+  id             String        @id @default(cuid())
+  propertyId     String
+  property       Property      @relation(fields: [propertyId], references: [id])
+  dealId         String?
+  deal           Deal?         @relation(fields: [dealId], references: [id])
+  contactId      String
+  contact        Contact       @relation("ViewingContact", fields: [contactId], references: [id])
+  agentId        String?
+  agent          User?         @relation("ViewingAgent", fields: [agentId], references: [id])
+  scheduledAt    DateTime
+  status         ViewingStatus @default(SCHEDULED)
+  feedbackRating Int?
+  feedbackNotes  String?
+  createdAt      DateTime      @default(now())
+}
+
+enum OfferStatus {
+  SUBMITTED
+  COUNTERED
+  ACCEPTED
+  REJECTED
+  WITHDRAWN
+}
+
+model Offer {
+  id          String      @id @default(cuid())
+  dealId      String
+  deal        Deal        @relation(fields: [dealId], references: [id])
+  amount      Float
+  terms       String?
+  submittedBy String?
+  status      OfferStatus @default(SUBMITTED)
+  createdAt   DateTime    @default(now())
+  respondedAt DateTime?
+}
+
+enum CommissionStatus {
+  PENDING
+  INVOICED
+  PARTIALLY_PAID
+  PAID
+  OVERDUE
+}
+
+model Commission {
+  id                String           @id @default(cuid())
+  dealId            String           @unique
+  deal              Deal             @relation(fields: [dealId], references: [id])
+  agencyFeePct      Float?
+  agencyFeeAmount   Float?
+  agentSplitPct     Float?
+  agentSplitAmount  Float?
+  brokerSplitPct    Float?
+  brokerSplitAmount Float?
+  status            CommissionStatus @default(PENDING)
+  dueDate           DateTime?
+  paidDate          DateTime?
+  notes             String?
+  createdAt         DateTime         @default(now())
+}
+
+// ---------------------------------------------------------------------------
+// Documents, marketing, sharing
+// ---------------------------------------------------------------------------
+
+enum DocumentCategory {
+  DEED
+  SURVEY_PLAN
+  COC
+  APPROVED_PLAN
+  MUNICIPAL
+  TAX
+  AGREEMENT
+  IDENTIFICATION
+  OTHER
+}
+
+model Document {
+  id           String           @id @default(cuid())
+  propertyId   String?
+  property     Property?        @relation(fields: [propertyId], references: [id])
+  contactId    String?
+  contact      Contact?         @relation(fields: [contactId], references: [id])
+  name         String
+  category     DocumentCategory
+  fileUrl      String
+  confidential Boolean          @default(true)
+  expiresAt    DateTime?
+  uploadedById String?
+  uploadedBy   User?            @relation(fields: [uploadedById], references: [id])
+  createdAt    DateTime         @default(now())
+}
+
+enum MarketingContentType {
+  DESCRIPTION
+  WHATSAPP
+  META_AD
+  FB_MARKETPLACE
+  INSTAGRAM_CAPTION
+  WEBSITE_COPY
+  EMAIL_CAMPAIGN
+  BROCHURE
+  SOCIAL_1_1
+  STORY_9_16
+}
+
+enum Language {
+  EN
+  SI
+  TA
+}
+
+model MarketingAsset {
+  id           String               @id @default(cuid())
+  propertyId   String
+  property     Property             @relation(fields: [propertyId], references: [id])
+  contentType  MarketingContentType
+  language     Language             @default(EN)
+  content      String
+  approved     Boolean              @default(false)
+  approvedById String?
+  approvedBy   User?                @relation("MarketingApprover", fields: [approvedById], references: [id])
+  createdAt    DateTime             @default(now())
+}
+
+enum ShareVisibility {
+  PUBLIC
+  UNLISTED
+  PASSWORD
+  EXPIRING
+}
+
+model SharePage {
+  id                  String          @id @default(cuid())
+  propertyId          String
+  property            Property        @relation(fields: [propertyId], references: [id])
+  slug                String          @unique
+  visibility          ShareVisibility @default(UNLISTED)
+  password            String?
+  expiresAt           DateTime?
+  watermarkClientName String?
+  hideOwnerContact    Boolean         @default(true)
+  hideExactLocation   Boolean         @default(true)
+  viewCount           Int             @default(0)
+  createdAt           DateTime        @default(now())
+}
+
+// ---------------------------------------------------------------------------
+// AI Intake
+// ---------------------------------------------------------------------------
+
+enum IntakeMode {
+  PROPERTY
+  REQUIREMENT
+  AUTO
+  UPDATE
+}
+
+enum IntakeStatus {
+  PENDING
+  REVIEWED
+}
+
+model AiIntakeJob {
+  id          String       @id @default(cuid())
+  rawText     String
+  mode        IntakeMode
+  engine      String
+  resultJson  Json
+  status      IntakeStatus @default(PENDING)
+  createdById String?
+  createdBy   User?        @relation(fields: [createdById], references: [id])
+  createdAt   DateTime     @default(now())
+}
+
+// ---------------------------------------------------------------------------
+// Matching, tasks, activity, audit
+// ---------------------------------------------------------------------------
+
+model MatchShare {
+  id            String      @id @default(cuid())
+  propertyId    String
+  property      Property    @relation(fields: [propertyId], references: [id])
+  requirementId String
+  requirement   Requirement @relation(fields: [requirementId], references: [id])
+  score         Int
+  sharedAt      DateTime    @default(now())
+  channel       String?
+}
+
+enum TaskType {
+  CONTACT_INQUIRY
+  VIEWING_CONFIRM
+  CLIENT_UPDATE
+  LISTING_VERIFY
+  OFFER_RESPONSE
+  LEASE_EXPIRY
+  COMMISSION_OVERDUE
+  REQUIREMENT_RECONFIRM
+  CUSTOM
+}
+
+enum TaskStatus {
+  OPEN
+  DONE
+  SNOOZED
+}
+
+model Task {
+  id                String     @id @default(cuid())
+  type              TaskType
+  title             String
+  dueAt             DateTime
+  relatedEntityType String?
+  relatedEntityId   String?
+  assignedToId      String?
+  assignedTo        User?      @relation("TaskAssignee", fields: [assignedToId], references: [id])
+  status            TaskStatus @default(OPEN)
+  createdAt         DateTime   @default(now())
+}
+
+model Activity {
+  id            String       @id @default(cuid())
+  entityType    String
+  propertyId    String?
+  property      Property?    @relation(fields: [propertyId], references: [id])
+  requirementId String?
+  requirement   Requirement? @relation(fields: [requirementId], references: [id])
+  dealId        String?
+  deal          Deal?        @relation(fields: [dealId], references: [id])
+  type          String
+  message       String
+  userId        String?
+  user          User?        @relation(fields: [userId], references: [id])
+  createdAt     DateTime     @default(now())
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id])
+  action     String
+  entityType String
+  entityId   String
+  before     Json?
+  after      Json?
+  createdAt  DateTime @default(now())
+}
