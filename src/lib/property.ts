@@ -1,5 +1,11 @@
-import type { Property } from "@/generated/prisma/client";
-import { formatCurrency } from "@/lib/format";
+import type { Property, Requirement } from "@/generated/prisma/client";
+import { formatCurrency, titleCase } from "@/lib/format";
+
+// One place for the business contact details every outbound message signs
+// off with.
+export const BUSINESS_WEBSITE = "imperiumrealty.co";
+export const BUSINESS_PHONE = "+94 777 143 774";
+const SIGNATURE = ["Imperium Realty", `🌐 ${BUSINESS_WEBSITE}`, `📞 ${BUSINESS_PHONE}`].join("\n");
 
 // Spec §8 "Property completeness score" — 0-100 with a short qualitative
 // label agents recognise at a glance. Only high-completeness, verified
@@ -56,10 +62,30 @@ export function isStale(p: Pick<Property, "lastVerifiedDate" | "listingStatus">,
   return ageDays > thresholdDays;
 }
 
+// The client's real price (totalPrice/monthlyRental/annualLeaseValue) vs.
+// what's actually shown to a buyer (advertisedPrice) can differ when a
+// client authorizes a markup — advertisedPrice wins everywhere buyer-facing
+// (cards, WhatsApp, matching) whenever it's set; falls back to the client's
+// own price for the (still-common) case of no markup.
 export function relevantAskingPrice(p: Pick<Property, "transactionType" | "totalPrice" | "monthlyRental" | "annualLeaseValue" | "advertisedPrice">) {
-  if (p.transactionType === "RENT" || p.transactionType === "SHORT_TERM_RENTAL") return p.monthlyRental ?? p.advertisedPrice;
-  if (p.transactionType === "LEASE") return p.annualLeaseValue ?? p.advertisedPrice;
-  return p.totalPrice ?? p.advertisedPrice;
+  if (p.transactionType === "RENT" || p.transactionType === "SHORT_TERM_RENTAL") return p.advertisedPrice ?? p.monthlyRental;
+  if (p.transactionType === "LEASE") return p.advertisedPrice ?? p.annualLeaseValue;
+  return p.advertisedPrice ?? p.totalPrice;
+}
+
+// The client's own, un-marked-up price — for the confidential-gated "client
+// price vs. advertised" comparison on the property detail page.
+export function clientPrice(p: Pick<Property, "transactionType" | "totalPrice" | "monthlyRental" | "annualLeaseValue">) {
+  if (p.transactionType === "RENT" || p.transactionType === "SHORT_TERM_RENTAL") return p.monthlyRental;
+  if (p.transactionType === "LEASE") return p.annualLeaseValue;
+  return p.totalPrice;
+}
+
+export function applyMarkup(basePrice: number | null | undefined, markupType: "NONE" | "PERCENT" | "FIXED", markupValue: number | null | undefined): number | null {
+  if (basePrice == null) return null;
+  if (markupType === "PERCENT" && markupValue) return Math.round(basePrice * (1 + markupValue / 100));
+  if (markupType === "FIXED" && markupValue) return Math.round(basePrice + markupValue);
+  return basePrice;
 }
 
 export function priceUnit(p: Pick<Property, "transactionType">) {
@@ -68,17 +94,54 @@ export function priceUnit(p: Pick<Property, "transactionType">) {
   return "";
 }
 
+// Ready-to-send WhatsApp copy for a single property — one consistent
+// structure every agent sends, signed off with the same business contact
+// details every time instead of everyone typing their own.
 export function whatsAppMessage(p: Property) {
   const price = relevantAskingPrice(p);
   const size = primarySize(p);
+  const features = p.featuresJson && typeof p.featuresJson === "object" ? Object.keys(p.featuresJson as object) : [];
   const lines = [
     `*${p.title}*`,
     [p.subtype, size].filter(Boolean).join(" · "),
-    price ? `${formatCurrency(price, p.currency)}${priceUnit(p)}${p.priceNegotiable ? " (negotiable)" : ""}` : undefined,
-    [p.city, p.district].filter(Boolean).join(", "),
     "",
-    "Imperium Realty · Property intelligence. Precisely matched.",
-  ].filter(Boolean);
+    price ? `💰 ${formatCurrency(price, p.currency)}${priceUnit(p)}${p.priceNegotiable ? " (negotiable)" : ""}` : undefined,
+    [p.city, p.district].filter(Boolean).join(", ") ? `📍 ${[p.city, p.district].filter(Boolean).join(", ")}` : undefined,
+    features.length ? `✨ ${features.map((f) => titleCase(f)).join(", ")}` : undefined,
+    p.description ? `\n${p.description}` : undefined,
+    "",
+    SIGNATURE,
+  ].filter((l) => l !== undefined);
+  return lines.join("\n");
+}
+
+// Same idea, for sharing a client's requirement — with a broker who might
+// have matching inventory, or as a record of exactly what was promised.
+export function whatsAppMessageForRequirement(r: Requirement) {
+  const locations = Array.isArray(r.preferredLocationsJson) ? (r.preferredLocationsJson as string[]) : [];
+  const budget =
+    r.budgetMax && r.budgetMin
+      ? `${formatCurrency(r.budgetMin)} to ${formatCurrency(r.budgetMax)}`
+      : r.budgetMax
+        ? `up to ${formatCurrency(r.budgetMax)}`
+        : r.budgetMin
+          ? `from ${formatCurrency(r.budgetMin)}`
+          : undefined;
+  const size = r.sizeMin && r.sizeMax ? `${r.sizeMin.toLocaleString()}-${r.sizeMax.toLocaleString()} sqft` : undefined;
+  const lines = [
+    `*Looking for: ${r.title}*`,
+    [titleCase(r.category), titleCase(r.dealType)].filter(Boolean).join(" · "),
+    "",
+    budget ? `💰 Budget: ${budget}` : undefined,
+    size ? `📐 Size: ${size}` : undefined,
+    locations.length ? `📍 Preferred: ${locations.join(", ")}` : undefined,
+    r.urgency ? `⏱ Urgency: ${titleCase(r.urgency)}` : undefined,
+    r.intendedUse ? `\n${r.intendedUse}` : undefined,
+    "",
+    "Have something that fits? Get in touch.",
+    "",
+    SIGNATURE,
+  ].filter((l) => l !== undefined);
   return lines.join("\n");
 }
 

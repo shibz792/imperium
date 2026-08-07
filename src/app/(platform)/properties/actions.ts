@@ -7,6 +7,7 @@ import { requireUser } from "@/lib/auth";
 import { nextPropertyRef, nextContactRef } from "@/lib/refs";
 import { writeAudit, logActivity } from "@/lib/audit";
 import { districtForCity } from "@/lib/locations";
+import { applyMarkup } from "@/lib/property";
 
 function str(fd: FormData, key: string): string | undefined {
   const v = fd.get(key);
@@ -59,12 +60,19 @@ async function resolveOwner(fd: FormData, agentId: string): Promise<string | und
 
 function buildPropertyData(fd: FormData) {
   const city = str(fd, "city");
+  const transactionType = str(fd, "transactionType") ?? "SALE";
+  const isRent = transactionType === "RENT" || transactionType === "SHORT_TERM_RENTAL";
+  const isLease = transactionType === "LEASE";
+  const basePrice = isRent ? num(fd, "monthlyRental") : isLease ? num(fd, "annualLeaseValue") : num(fd, "totalPrice");
+  const markupType = (str(fd, "markupType") ?? "NONE") as "NONE" | "PERCENT" | "FIXED";
+  const markupValue = num(fd, "markupValue");
+
   return {
     title: str(fd, "title") ?? "Untitled property",
     description: str(fd, "description"),
     category: (str(fd, "category") ?? "RESIDENTIAL") as never,
     subtype: str(fd, "subtype") ?? "House",
-    transactionType: (str(fd, "transactionType") ?? "SALE") as never,
+    transactionType: transactionType as never,
     listingStatus: (str(fd, "listingStatus") ?? "DRAFT") as never,
     exclusivity: (str(fd, "exclusivity") ?? "OPEN") as never,
     source: str(fd, "source"),
@@ -107,7 +115,9 @@ function buildPropertyData(fd: FormData) {
     expectedYieldPct: num(fd, "expectedYieldPct"),
     currency: str(fd, "currency") ?? "LKR",
     ownerMinPrice: num(fd, "ownerMinPrice"),
-    advertisedPrice: num(fd, "advertisedPrice") ?? num(fd, "totalPrice") ?? num(fd, "monthlyRental") ?? num(fd, "annualLeaseValue"),
+    markupType: markupType as never,
+    markupValue,
+    advertisedPrice: applyMarkup(basePrice, markupType, markupValue) ?? undefined,
 
     featuresJson: extractFeatures(fd),
 

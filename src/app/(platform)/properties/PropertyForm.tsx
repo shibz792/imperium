@@ -2,7 +2,8 @@
 
 import { useMemo, useState } from "react";
 import { PROPERTY_SUBTYPES, FEATURE_FIELDS_BY_SUBTYPE, DEFAULT_FEATURES, ALL_DISTRICTS, ALL_CITIES, districtForCity } from "@/lib/locations";
-import { titleCase } from "@/lib/format";
+import { titleCase, formatCurrency } from "@/lib/format";
+import { applyMarkup } from "@/lib/property";
 
 type Owner = { id: string; name: string; phone: string };
 type Agent = { id: string; name: string };
@@ -43,6 +44,15 @@ export function PropertyForm({
   const isSale = transactionType === "SALE" || transactionType === "INVESTMENT" || transactionType === "OFF_MARKET" || transactionType === "JOINT_VENTURE" || transactionType === "DEVELOPMENT";
   const isRent = transactionType === "RENT" || transactionType === "SHORT_TERM_RENTAL";
   const isLease = transactionType === "LEASE";
+  const priceFieldName = isRent ? "monthlyRental" : isLease ? "annualLeaseValue" : "totalPrice";
+  const initialBasePrice = (initial?.[priceFieldName] as number) ?? undefined;
+  const [basePriceStr, setBasePriceStr] = useState<string>(initialBasePrice != null ? String(initialBasePrice) : "");
+  const [priceNegotiable, setPriceNegotiable] = useState(Boolean(initial?.priceNegotiable));
+  const [markupEnabled, setMarkupEnabled] = useState(Boolean(initial?.markupType && initial?.markupType !== "NONE"));
+  const [markupType, setMarkupType] = useState<"PERCENT" | "FIXED">(initial?.markupType === "FIXED" ? "FIXED" : "PERCENT");
+  const [markupValue, setMarkupValue] = useState<string>(initial?.markupValue != null ? String(initial.markupValue) : "");
+  const basePriceNum = Number(basePriceStr.replace(/,/g, "")) || undefined;
+  const advertisedPreview = applyMarkup(basePriceNum, markupEnabled ? markupType : "NONE", Number(markupValue) || undefined);
 
   return (
     <form action={action} className="space-y-5">
@@ -106,22 +116,57 @@ export function PropertyForm({
 
       <Section title="Pricing">
         <Grid>
-          {isSale && <TextField name="totalPrice" label="Total asking price (LKR)" type="number" defaultValue={initial?.totalPrice as number} />}
+          {isSale && <TextField name="totalPrice" label="Client's asking price (LKR)" type="number" value={basePriceStr} onChange={setBasePriceStr} />}
           {isSale && <TextField name="pricePerPerch" label="Price per perch" type="number" defaultValue={initial?.pricePerPerch as number} />}
           {isSale && <TextField name="pricePerSqft" label="Price per sqft" type="number" defaultValue={initial?.pricePerSqft as number} />}
-          {isRent && <TextField name="monthlyRental" label="Monthly rental (LKR)" type="number" defaultValue={initial?.monthlyRental as number} />}
+          {isRent && <TextField name="monthlyRental" label="Client's asking rent (LKR/month)" type="number" value={basePriceStr} onChange={setBasePriceStr} />}
           {isRent && <TextField name="securityDeposit" label="Security deposit" type="number" defaultValue={initial?.securityDeposit as number} />}
-          {isLease && <TextField name="annualLeaseValue" label="Annual lease value (LKR)" type="number" defaultValue={initial?.annualLeaseValue as number} />}
+          {isLease && <TextField name="annualLeaseValue" label="Client's asking lease value (LKR/year)" type="number" value={basePriceStr} onChange={setBasePriceStr} />}
           {isLease && <TextField name="keyMoney" label="Key money" type="number" defaultValue={initial?.keyMoney as number} />}
           {(isRent || isLease) && <TextField name="minLeaseTermMonths" label="Minimum lease term (months)" type="number" defaultValue={initial?.minLeaseTermMonths as number} />}
           <TextField name="expectedYieldPct" label="Expected yield (%)" type="number" step="0.1" defaultValue={initial?.expectedYieldPct as number} />
           <SelectField name="currency" label="Currency" defaultValue={(initial?.currency as string) ?? "LKR"} options={[["LKR", "LKR"], ["USD", "USD"]]} />
           <TextField name="ownerMinPrice" label="Owner's confidential minimum" type="number" defaultValue={initial?.ownerMinPrice as number} hint="Visible only to confidential-access roles" />
-          <label className="flex items-center gap-2 self-end pb-2 text-sm text-ir-navy">
-            <input type="checkbox" name="priceNegotiable" defaultChecked={(initial?.priceNegotiable as boolean) ?? true} className="h-4 w-4 accent-ir-gold-dark" />
-            Price negotiable
-          </label>
         </Grid>
+
+        <div className="mt-4 border-t border-black/6 pt-4">
+          <div className="ir-label mb-1.5">Is the client&rsquo;s price negotiable?</div>
+          <input type="hidden" name="priceNegotiable" value={priceNegotiable ? "on" : ""} />
+          <div className="flex overflow-hidden rounded-[3px] border border-black/15" style={{ width: "fit-content" }}>
+            <button type="button" onClick={() => setPriceNegotiable(false)} className={`px-4 py-1.5 text-xs font-medium ${!priceNegotiable ? "bg-ir-navy text-white" : "bg-white text-black/50 hover:text-ir-navy"}`}>
+              Fixed
+            </button>
+            <button type="button" onClick={() => setPriceNegotiable(true)} className={`px-4 py-1.5 text-xs font-medium ${priceNegotiable ? "bg-ir-navy text-white" : "bg-white text-black/50 hover:text-ir-navy"}`}>
+              Negotiable
+            </button>
+          </div>
+        </div>
+
+        <div className="mt-4 border-t border-black/6 pt-4">
+          <label className="flex items-center gap-2 text-sm text-ir-navy">
+            <input type="checkbox" checked={markupEnabled} onChange={(e) => setMarkupEnabled(e.target.checked)} className="h-4 w-4 accent-ir-gold-dark" />
+            Client authorized a markup on this listing
+          </label>
+          <p className="mt-1 text-[0.7rem] text-black/40">The advertised price shown to buyers can run higher than the client&rsquo;s own price. The gap stays visible only to confidential-access roles.</p>
+          {markupEnabled && (
+            <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <SelectField name="markupType" label="Markup type" value={markupType} onChange={(v) => setMarkupType(v === "FIXED" ? "FIXED" : "PERCENT")} options={[["PERCENT", "Percentage"], ["FIXED", "Fixed amount"]]} />
+              <TextField
+                name="markupValue"
+                label={markupType === "PERCENT" ? "Markup (%)" : "Markup (LKR)"}
+                type="number"
+                value={markupValue}
+                onChange={setMarkupValue}
+              />
+              <div>
+                <div className="ir-label mb-1 block">Advertised price</div>
+                <div className="ir-input flex items-center !bg-ir-ivory-deep text-ir-navy">
+                  {advertisedPreview != null ? formatCurrency(advertisedPreview) : "-"}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
       </Section>
 
       <Section title="Features">

@@ -5,6 +5,8 @@ import { prisma } from "@/lib/prisma";
 import { requireUser, canSeeConfidential } from "@/lib/auth";
 import { Badge, Field, PageHeader, SectionCard, Tabs, EmptyState } from "@/components/ui";
 import { WhatsAppButton } from "@/components/WhatsAppButton";
+import { CopyableMessage } from "@/components/CopyableMessage";
+import { whatsAppMessageForRequirement } from "@/lib/property";
 import { REQUIREMENT_STATUS_TONE, URGENCY_TONE, DEAL_STAGE_TONE } from "@/lib/badges";
 import { formatCurrency, formatDate, formatDateTime, titleCase, daysAgo } from "@/lib/format";
 import { scoreMatch, explainMatch } from "@/lib/match";
@@ -95,7 +97,7 @@ export default async function RequirementDetailPage({ params, searchParams }: { 
               <Field label="Category" value={titleCase(requirement.category)} />
               <Field label="Subtype" value={requirement.subtype} />
               <Field label="Budget" value={requirement.budgetMax ? `up to ${formatCurrency(requirement.budgetMax)}` : requirement.budgetMin ? `from ${formatCurrency(requirement.budgetMin)}` : "Not confirmed"} />
-              <Field label="Size range" value={requirement.sizeMin || requirement.sizeMax ? `${requirement.sizeMin ?? "?"} – ${requirement.sizeMax ?? "?"} sqft` : undefined} />
+              <Field label="Size range" value={requirement.sizeMin || requirement.sizeMax ? `${requirement.sizeMin ?? "?"} to ${requirement.sizeMax ?? "?"} sqft` : undefined} />
               <Field label="Financing" value={titleCase(requirement.financingStatus)} />
               <Field label="Decision stage" value={requirement.decisionStage} />
               <Field label="Deadline" value={formatDate(requirement.deadline)} />
@@ -184,6 +186,10 @@ export default async function RequirementDetailPage({ params, searchParams }: { 
             )}
             <Link href={`${basePath}?tab=matches`} className="mt-2 inline-block text-xs font-medium text-ir-gold-dark hover:underline">View all matches →</Link>
           </SectionCard>
+
+          <div className="lg:col-span-3">
+            <CopyableMessage message={whatsAppMessageForRequirement(requirement)} />
+          </div>
         </div>
       )}
 

@@ -5,9 +5,10 @@ import { prisma } from "@/lib/prisma";
 import { requireUser, canSeeConfidential } from "@/lib/auth";
 import { Badge, Field, PageHeader, SectionCard, Tabs, EmptyState } from "@/components/ui";
 import { WhatsAppButton } from "@/components/WhatsAppButton";
+import { CopyableMessage } from "@/components/CopyableMessage";
 import { LISTING_STATUS_TONE, LEGAL_STATUS_TONE, DEAL_STAGE_TONE, VIEWING_STATUS_TONE, OFFER_STATUS_TONE } from "@/lib/badges";
 import { formatCurrency, formatDate, formatDateTime, titleCase, daysAgo } from "@/lib/format";
-import { completenessScore, isStale, primarySize, relevantAskingPrice, priceUnit } from "@/lib/property";
+import { completenessScore, isStale, primarySize, relevantAskingPrice, clientPrice, priceUnit, whatsAppMessage } from "@/lib/property";
 import { scoreMatch, explainMatch } from "@/lib/match";
 import { verifyProperty, changeListingStatus } from "../actions";
 
@@ -120,6 +121,12 @@ export default async function PropertyDetailPage({ params, searchParams }: { par
               <Field label="Asking price" value={`${formatCurrency(relevantAskingPrice(property), property.currency)}${priceUnit(property)}`} />
               <Field label="Size" value={primarySize(property)} />
               <Field label="Negotiable" value={property.priceNegotiable ? "Yes" : "Fixed"} />
+              {showConfidential && property.markupType !== "NONE" && (
+                <>
+                  <Field label="Client's price" value={`${formatCurrency(clientPrice(property), property.currency)}${priceUnit(property)}`} />
+                  <Field label="Markup" value={property.markupType === "PERCENT" ? `${property.markupValue}%` : formatCurrency(property.markupValue, property.currency)} />
+                </>
+              )}
               <Field label="Road access" value={property.roadAccess} />
               <Field label="Assigned agent" value={property.assignedAgent?.name} />
               <Field label="Source" value={property.source} />
@@ -203,6 +210,10 @@ export default async function PropertyDetailPage({ params, searchParams }: { par
               View all matches →
             </Link>
           </SectionCard>
+
+          <div className="lg:col-span-3">
+            <CopyableMessage message={whatsAppMessage(property)} />
+          </div>
         </div>
       )}
 

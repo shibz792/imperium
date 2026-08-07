@@ -159,6 +159,12 @@ enum Exclusivity {
   OPEN
 }
 
+enum MarkupType {
+  NONE
+  PERCENT
+  FIXED
+}
+
 enum LocationVisibility {
   EXACT
   APPROXIMATE
@@ -221,9 +227,14 @@ model Property {
   bedrooms            Int?
   bathrooms           Int?
 
-  // Pricing
+  // Pricing. totalPrice/monthlyRental/annualLeaseValue is what the client
+  // actually asked for. Some listings the client authorizes a markup on —
+  // advertisedPrice (client price + markup) is what buyers actually see
+  // everywhere: property cards, WhatsApp messages, matching. Client price
+  // and markup are confidential-gated on the detail page, same as
+  // ownerMinPrice — the spread is commercially sensitive.
   totalPrice         Float?
-  priceNegotiable    Boolean @default(true)
+  priceNegotiable    Boolean @default(false)
   pricePerPerch      Float?
   pricePerSqft       Float?
   monthlyRental       Float?
@@ -234,6 +245,8 @@ model Property {
   expectedYieldPct    Float?
   currency            String  @default("LKR")
   ownerMinPrice       Float?
+  markupType          MarkupType @default(NONE)
+  markupValue         Float?
   advertisedPrice     Float?
 
   featuresJson Json?
