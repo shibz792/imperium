@@ -28,7 +28,8 @@ import {
 import { Logo } from "@/components/Logo";
 import type { NavItem } from "@/lib/nav";
 import { ROLE_LABELS } from "@/lib/roles";
-import type { Role } from "@/generated/prisma/client";
+import type { CurrentUser } from "@/lib/auth";
+import { initials } from "@/lib/format";
 import { useMobileNav } from "@/components/MobileNavContext";
 
 const ICONS: Record<string, LucideIcon> = {
@@ -49,7 +50,7 @@ const ICONS: Record<string, LucideIcon> = {
   Search,
 };
 
-export function Sidebar({ items, roleLabel: role }: { items: NavItem[]; roleLabel: Role }) {
+export function Sidebar({ items, user }: { items: NavItem[]; user: CurrentUser }) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
   const { open, setOpen } = useMobileNav();
@@ -106,9 +107,14 @@ export function Sidebar({ items, roleLabel: role }: { items: NavItem[]; roleLabe
         </nav>
 
         <div className="border-t border-white/[0.08] p-3">
-          <div className={clsx("mb-2 px-3.5", collapsed && "lg:hidden")}>
-            <div className="ir-label !mb-0.5 !text-white/30">Signed in as</div>
-            <div className="text-xs text-white/60">{ROLE_LABELS[role]}</div>
+          <div className="mb-1 flex items-center gap-2.5 px-3.5 py-1.5">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-ir-gold/30 bg-white/5 text-[0.65rem] font-semibold text-ir-gold">
+              {initials(user.name)}
+            </div>
+            <div className={clsx("min-w-0", collapsed && "lg:hidden")}>
+              <div className="truncate text-xs font-medium text-white">{user.name}</div>
+              <div className="truncate text-[0.7rem] text-white/40">{ROLE_LABELS[user.role]}</div>
+            </div>
           </div>
           <button
             onClick={() => setCollapsed((c) => !c)}

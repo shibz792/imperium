@@ -16,9 +16,9 @@ export default async function PlatformLayout({ children }: { children: React.Rea
   return (
     <MobileNavProvider>
       <div className="flex min-h-screen w-full">
-        <Sidebar items={items} roleLabel={user.role} />
+        <Sidebar items={items} user={user} />
         <div className="flex min-w-0 flex-1 flex-col">
-          <Topbar user={user} />
+          <Topbar />
           <main className="flex-1 bg-ir-ivory px-4 py-6 sm:px-10 sm:py-9">
             <div className="mx-auto w-full max-w-[1440px]">{children}</div>
           </main>

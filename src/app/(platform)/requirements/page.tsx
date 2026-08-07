@@ -24,6 +24,11 @@ export default async function RequirementsPage({ searchParams }: { searchParams:
     where.status = { in: ["NEW", "UNVERIFIED", "QUALIFIED", "ACTIVELY_SEARCHING", "OPTIONS_SHARED", "VIEWING_ARRANGED", "NEGOTIATING"] };
     where.lastContacted = { lt: daysAgoDate(14) };
   }
+  // From a Command Centre demand-hotspot click — jumps straight to every
+  // requirement that named this exact location as a preference.
+  if (sp.location) {
+    where.preferredLocationsJson = { array_contains: [sp.location] };
+  }
 
   const { page, skip, take } = paginationParams(sp);
   const [requirements, total] = await Promise.all([
@@ -43,7 +48,7 @@ export default async function RequirementsPage({ searchParams }: { searchParams:
       <PageHeader
         eyebrow={`Requirements · ${total}`}
         title="Requirement database"
-        description="Buyer, tenant, investor and corporate mandates: first-class records, not notes under a contact."
+        description={sp.location ? `Filtered to requirements preferring ${sp.location}.` : "Buyer, tenant, investor and corporate mandates: first-class records, not notes under a contact."}
         actions={
           <Link href="/requirements/new" className="ir-btn ir-btn-primary">
             <Plus size={15} /> New requirement
@@ -93,7 +98,7 @@ export default async function RequirementsPage({ searchParams }: { searchParams:
           </select>
         </div>
         <button type="submit" className="ir-btn ir-btn-ghost">Filter</button>
-        {(sp.q || sp.category || sp.dealType || sp.status || sp.urgency || sp.needsReconfirm) && (
+        {(sp.q || sp.category || sp.dealType || sp.status || sp.urgency || sp.needsReconfirm || sp.location) && (
           <Link href="/requirements" className="text-xs text-black/40 hover:text-ir-navy">Clear</Link>
         )}
       </form>

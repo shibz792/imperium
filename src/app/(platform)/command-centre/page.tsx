@@ -14,16 +14,16 @@ export default async function CommandCentrePage() {
 
   const ledgerStats = showFinance
     ? [
-        { label: "New properties (7d)", value: data.newProperties },
-        { label: "New requirements (7d)", value: data.newRequirements },
-        { label: "Matches awaiting review", value: data.matchesAwaitingReview, accent: true },
-        { label: "Open deals", value: data.openDealsCount },
+        { label: "New properties (7d)", value: data.newProperties, href: "/properties" },
+        { label: "New requirements (7d)", value: data.newRequirements, href: "/requirements" },
+        { label: "Matches awaiting review", value: data.matchesAwaitingReview, accent: true, href: "/matchmaker" },
+        { label: "Open deals", value: data.openDealsCount, href: "/deals" },
       ]
     : [
-        { label: "New properties (7d)", value: data.newProperties },
-        { label: "New requirements (7d)", value: data.newRequirements },
-        { label: "Stale listings", value: data.staleListings.length },
-        { label: "Offers awaiting action", value: data.pendingOffers.length },
+        { label: "New properties (7d)", value: data.newProperties, href: "/properties" },
+        { label: "New requirements (7d)", value: data.newRequirements, href: "/requirements" },
+        { label: "Stale listings", value: data.staleListings.length, href: "/properties?stale=1" },
+        { label: "Offers awaiting action", value: data.pendingOffers.length, href: "/deals" },
       ];
 
   return (
@@ -45,13 +45,13 @@ export default async function CommandCentrePage() {
           <div className="flex flex-wrap gap-x-10 gap-y-4">
             {showFinance ? (
               <>
-                <HeroFigure label="Pipeline value" value={formatCurrency(data.pipelineValue)} />
-                <HeroFigure label="Expected commission" value={formatCurrency(data.expectedCommission)} accent />
+                <HeroFigure label="Pipeline value" value={formatCurrency(data.pipelineValue)} href="/deals" />
+                <HeroFigure label="Expected commission" value={formatCurrency(data.expectedCommission)} accent href="/commissions" />
               </>
             ) : (
               <>
-                <HeroFigure label="Open deals" value={String(data.openDealsCount)} />
-                <HeroFigure label="Matches awaiting review" value={String(data.matchesAwaitingReview)} accent />
+                <HeroFigure label="Open deals" value={String(data.openDealsCount)} href="/deals" />
+                <HeroFigure label="Matches awaiting review" value={String(data.matchesAwaitingReview)} accent href="/matchmaker" />
               </>
             )}
           </div>
@@ -61,10 +61,10 @@ export default async function CommandCentrePage() {
       {/* Ledger strip — one continuous row, not four separate boxed cards. */}
       <div className="ir-card mb-6 flex flex-wrap overflow-hidden">
         {ledgerStats.map((s, i) => (
-          <div key={s.label} className={`min-w-[150px] flex-1 px-6 py-4 ${i > 0 ? "border-l border-black/[0.07]" : ""}`}>
+          <Link key={s.label} href={s.href} className={`min-w-[150px] flex-1 px-6 py-4 hover:bg-black/[0.015] ${i > 0 ? "border-l border-black/[0.07]" : ""}`}>
             <div className="ir-label mb-1.5">{s.label}</div>
             <div className={`ir-figure text-2xl ${s.accent ? "text-ir-gold-dark" : "text-ir-navy"}`}>{s.value}</div>
-          </div>
+          </Link>
         ))}
       </div>
 
@@ -83,13 +83,25 @@ export default async function CommandCentrePage() {
             <ul className="space-y-2.5">
               {data.openTasks.map((t) => {
                 const overdue = t.dueAt < new Date();
-                return (
-                  <li key={t.id} className="flex items-start justify-between gap-3 border-b border-black/6 pb-2.5 last:border-0 last:pb-0">
+                const href = entityHref(t.relatedEntityType, t.relatedEntityId);
+                const row = (
+                  <>
                     <div>
-                      <div className="text-[0.8125rem] leading-snug text-ir-navy">{t.title}</div>
+                      <div className={`text-[0.8125rem] leading-snug ${href ? "text-ir-navy hover:text-ir-gold-dark" : "text-ir-navy"}`}>{t.title}</div>
                       <div className="mt-0.5 text-[0.7rem] text-black/40">{t.assignedTo?.name ?? "Unassigned"}</div>
                     </div>
                     <Badge tone={overdue ? "red" : "amber"}>{overdue ? "Overdue" : formatDate(t.dueAt)}</Badge>
+                  </>
+                );
+                return (
+                  <li key={t.id} className="border-b border-black/6 pb-2.5 last:border-0 last:pb-0">
+                    {href ? (
+                      <Link href={href} className="flex items-start justify-between gap-3">
+                        {row}
+                      </Link>
+                    ) : (
+                      <div className="flex items-start justify-between gap-3">{row}</div>
+                    )}
                   </li>
                 );
               })}
@@ -114,13 +126,15 @@ export default async function CommandCentrePage() {
             <ul className="space-y-2.5">
               {data.upcomingViewings.map((v) => (
                 <li key={v.id} className="border-b border-black/6 pb-2.5 last:border-0 last:pb-0">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="text-[0.8125rem] leading-snug text-ir-navy">{v.property.title}</div>
-                    <Badge tone={(VIEWING_STATUS_TONE[v.status] as never) ?? "gray"}>{v.status}</Badge>
-                  </div>
-                  <div className="mt-0.5 text-[0.7rem] text-black/40">
-                    {formatDateTime(v.scheduledAt)} · {v.contact.name} · {v.agent?.name ?? "unassigned"}
-                  </div>
+                  <Link href={`/properties/${v.propertyId}`} className="block">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="text-[0.8125rem] leading-snug text-ir-navy hover:text-ir-gold-dark">{v.property.title}</div>
+                      <Badge tone={(VIEWING_STATUS_TONE[v.status] as never) ?? "gray"}>{v.status}</Badge>
+                    </div>
+                    <div className="mt-0.5 text-[0.7rem] text-black/40">
+                      {formatDateTime(v.scheduledAt)} · {v.contact.name} · {v.agent?.name ?? "unassigned"}
+                    </div>
+                  </Link>
                 </li>
               ))}
             </ul>
@@ -144,13 +158,15 @@ export default async function CommandCentrePage() {
             <ul className="space-y-2.5">
               {data.pendingOffers.map((o) => (
                 <li key={o.id} className="border-b border-black/6 pb-2.5 last:border-0 last:pb-0">
-                  <div className="text-[0.8125rem] leading-snug text-ir-navy">{o.deal.property.title}</div>
-                  <div className="mt-0.5 flex items-center justify-between text-[0.7rem] text-black/40">
-                    <span>
-                      {o.deal.client.name} · {formatCurrency(o.amount)}
-                    </span>
-                    <span>{daysAgoFn(o.createdAt)}d ago</span>
-                  </div>
+                  <Link href={`/deals/${o.dealId}`} className="block">
+                    <div className="text-[0.8125rem] leading-snug text-ir-navy hover:text-ir-gold-dark">{o.deal.property.title}</div>
+                    <div className="mt-0.5 flex items-center justify-between text-[0.7rem] text-black/40">
+                      <span>
+                        {o.deal.client.name} · {formatCurrency(o.amount)}
+                      </span>
+                      <span>{daysAgoFn(o.createdAt)}d ago</span>
+                    </div>
+                  </Link>
                 </li>
               ))}
             </ul>
@@ -172,15 +188,17 @@ export default async function CommandCentrePage() {
           ) : (
             <ul className="space-y-2">
               {data.hotspots.map((h) => (
-                <li key={h.location} className="flex items-center gap-3">
-                  <div className="w-28 shrink-0 truncate text-[0.8125rem] text-ir-navy">{h.location}</div>
-                  <div className="h-2 flex-1 overflow-hidden rounded-full bg-black/6">
-                    <div
-                      className="h-full rounded-full bg-ir-gold"
-                      style={{ width: `${Math.min(100, (h.count / data.hotspots[0].count) * 100)}%` }}
-                    />
-                  </div>
-                  <div className="w-6 shrink-0 text-right text-[0.75rem] tabular-nums text-black/50">{h.count}</div>
+                <li key={h.location}>
+                  <Link href={`/requirements?location=${encodeURIComponent(h.location)}`} className="flex items-center gap-3">
+                    <div className="w-28 shrink-0 truncate text-[0.8125rem] text-ir-navy hover:text-ir-gold-dark">{h.location}</div>
+                    <div className="h-2 flex-1 overflow-hidden rounded-full bg-black/6">
+                      <div
+                        className="h-full rounded-full bg-ir-gold"
+                        style={{ width: `${Math.min(100, (h.count / data.hotspots[0].count) * 100)}%` }}
+                      />
+                    </div>
+                    <div className="w-6 shrink-0 text-right text-[0.75rem] tabular-nums text-black/50">{h.count}</div>
+                  </Link>
                 </li>
               ))}
             </ul>
@@ -225,14 +243,22 @@ export default async function CommandCentrePage() {
             <EmptyState title="No activity yet" />
           ) : (
             <ul className="space-y-2.5">
-              {data.recentActivity.map((a) => (
-                <li key={a.id} className="border-b border-black/6 pb-2.5 text-[0.8125rem] leading-snug last:border-0">
-                  <span className="text-ir-navy">{a.message}</span>
-                  <div className="mt-0.5 text-[0.7rem] text-black/40">
-                    {a.user?.name ?? "System"} · {formatDateTime(a.createdAt)}
-                  </div>
-                </li>
-              ))}
+              {data.recentActivity.map((a) => {
+                const href = a.propertyId ? `/properties/${a.propertyId}` : a.requirementId ? `/requirements/${a.requirementId}` : a.dealId ? `/deals/${a.dealId}` : null;
+                const body = (
+                  <>
+                    <span className={href ? "text-ir-navy hover:text-ir-gold-dark" : "text-ir-navy"}>{a.message}</span>
+                    <div className="mt-0.5 text-[0.7rem] text-black/40">
+                      {a.user?.name ?? "System"} · {formatDateTime(a.createdAt)}
+                    </div>
+                  </>
+                );
+                return (
+                  <li key={a.id} className="border-b border-black/6 pb-2.5 text-[0.8125rem] leading-snug last:border-0">
+                    {href ? <Link href={href}>{body}</Link> : body}
+                  </li>
+                );
+              })}
             </ul>
           )}
         </section>
@@ -241,13 +267,23 @@ export default async function CommandCentrePage() {
   );
 }
 
-function HeroFigure({ label, value, accent = false }: { label: string; value: string; accent?: boolean }) {
+function HeroFigure({ label, value, accent = false, href }: { label: string; value: string; accent?: boolean; href: string }) {
   return (
-    <div>
+    <Link href={href} className="block">
       <div className="ir-label mb-1.5 !text-white/35">{label}</div>
       <div className={`ir-figure text-3xl sm:text-4xl ${accent ? "text-ir-gold" : "text-white"}`}>{value}</div>
-    </div>
+    </Link>
   );
+}
+
+// Task.relatedEntityType/relatedEntityId are loose, unenforced string
+// references (no FK) — resolve to a real link only for the entity types
+// this app actually has detail pages for, and only when both are set.
+function entityHref(type: string | null, id: string | null): string | null {
+  if (!type || !id) return null;
+  const prefix: Record<string, string> = { property: "/properties", requirement: "/requirements", deal: "/deals", contact: "/contacts" };
+  const base = prefix[type.toLowerCase()];
+  return base ? `${base}/${id}` : null;
 }
 
 function greeting() {
