@@ -8,6 +8,8 @@ import { PROPERTY_SUBTYPES } from "@/lib/locations";
 import { ClickableRow } from "@/components/ClickableRow";
 import { Pagination } from "@/components/Pagination";
 import { paginationParams, totalPages as computeTotalPages } from "@/lib/pagination";
+import { CopyWhatsAppButton } from "@/components/CopyWhatsAppButton";
+import { whatsAppMessageForRequirement } from "@/lib/property";
 import type { Prisma } from "@/generated/prisma/client";
 
 export default async function RequirementsPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
@@ -118,6 +120,7 @@ export default async function RequirementsPage({ searchParams }: { searchParams:
                 <th className="px-4 py-3 font-medium">Urgency</th>
                 <th className="px-4 py-3 font-medium">Agent</th>
                 <th className="px-4 py-3 font-medium">Next action</th>
+                <th className="px-4 py-3 font-medium" />
               </tr>
             </thead>
             <tbody>
@@ -138,6 +141,9 @@ export default async function RequirementsPage({ searchParams }: { searchParams:
                     <td className="px-4 py-3"><Badge tone={(URGENCY_TONE[r.urgency] as never) ?? "gray"}>{titleCase(r.urgency)}</Badge></td>
                     <td className="px-4 py-3 text-black/60">{r.assignedAgent?.name ?? "-"}</td>
                     <td className="px-4 py-3 text-black/50">{r.nextAction ? `${r.nextAction} (${formatDate(r.nextActionDate)})` : "-"}</td>
+                    <td className="px-4 py-3 text-right">
+                      <CopyWhatsAppButton message={whatsAppMessageForRequirement(r)} />
+                    </td>
                   </ClickableRow>
                 );
               })}

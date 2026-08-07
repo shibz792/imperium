@@ -4,10 +4,11 @@ import { prisma } from "@/lib/prisma";
 import { PageHeader, Badge, EmptyState } from "@/components/ui";
 import { LISTING_STATUS_TONE } from "@/lib/badges";
 import { formatCurrency, formatDate, titleCase, daysAgoDate } from "@/lib/format";
-import { completenessScore, isStale, primarySize, relevantAskingPrice, priceUnit } from "@/lib/property";
+import { completenessScore, isStale, primarySize, relevantAskingPrice, priceUnit, whatsAppMessage } from "@/lib/property";
 import { ALL_DISTRICTS, PROPERTY_SUBTYPES } from "@/lib/locations";
 import { PropertyCard } from "@/components/PropertyCard";
 import { ClickableRow } from "@/components/ClickableRow";
+import { CopyWhatsAppButton } from "@/components/CopyWhatsAppButton";
 import { Pagination } from "@/components/Pagination";
 import { paginationParams, totalPages as computeTotalPages } from "@/lib/pagination";
 import type { Prisma } from "@/generated/prisma/client";
@@ -152,6 +153,7 @@ export default async function PropertiesPage({ searchParams }: { searchParams: P
                 <th className="px-4 py-3 font-medium">Completeness</th>
                 <th className="px-4 py-3 font-medium">Agent</th>
                 <th className="px-4 py-3 font-medium">Verified</th>
+                <th className="px-4 py-3 font-medium" />
               </tr>
             </thead>
             <tbody>
@@ -196,6 +198,9 @@ export default async function PropertiesPage({ searchParams }: { searchParams: P
                     </td>
                     <td className="px-4 py-3 text-black/60">{p.assignedAgent?.name ?? "-"}</td>
                     <td className="px-4 py-3 text-black/50">{formatDate(p.lastVerifiedDate)}</td>
+                    <td className="px-4 py-3 text-right">
+                      <CopyWhatsAppButton message={whatsAppMessage(p)} />
+                    </td>
                   </ClickableRow>
                 );
               })}

@@ -94,14 +94,25 @@ export function priceUnit(p: Pick<Property, "transactionType">) {
   return "";
 }
 
+function saleHeader(t: Property["transactionType"]) {
+  if (t === "RENT" || t === "SHORT_TERM_RENTAL") return "🏠 *FOR RENT*";
+  if (t === "LEASE") return "🏠 *FOR LEASE*";
+  return "🏠 *FOR SALE*";
+}
+
+const DIVIDER = "▫️▫️▫️▫️▫️▫️▫️▫️▫️▫️";
+
 // Ready-to-send WhatsApp copy for a single property — one consistent
 // structure every agent sends, signed off with the same business contact
-// details every time instead of everyone typing their own.
+// details every time instead of everyone typing their own. A status header
+// (FOR SALE/RENT/LEASE) up top so it reads at a glance in a chat thread,
+// same as a real listing card would.
 export function whatsAppMessage(p: Property) {
   const price = relevantAskingPrice(p);
   const size = primarySize(p);
   const features = p.featuresJson && typeof p.featuresJson === "object" ? Object.keys(p.featuresJson as object) : [];
   const lines = [
+    saleHeader(p.transactionType),
     `*${p.title}*`,
     [p.subtype, size].filter(Boolean).join(" · "),
     "",
@@ -110,6 +121,7 @@ export function whatsAppMessage(p: Property) {
     features.length ? `✨ ${features.map((f) => titleCase(f)).join(", ")}` : undefined,
     p.description ? `\n${p.description}` : undefined,
     "",
+    DIVIDER,
     SIGNATURE,
   ].filter((l) => l !== undefined);
   return lines.join("\n");
@@ -129,7 +141,8 @@ export function whatsAppMessageForRequirement(r: Requirement) {
           : undefined;
   const size = r.sizeMin && r.sizeMax ? `${r.sizeMin.toLocaleString()}-${r.sizeMax.toLocaleString()} sqft` : undefined;
   const lines = [
-    `*Looking for: ${r.title}*`,
+    "🔍 *PROPERTY WANTED*",
+    `*${r.title}*`,
     [titleCase(r.category), titleCase(r.dealType)].filter(Boolean).join(" · "),
     "",
     budget ? `💰 Budget: ${budget}` : undefined,
@@ -140,6 +153,7 @@ export function whatsAppMessageForRequirement(r: Requirement) {
     "",
     "Have something that fits? Get in touch.",
     "",
+    DIVIDER,
     SIGNATURE,
   ].filter((l) => l !== undefined);
   return lines.join("\n");
