@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { SESSION_COOKIE, verifySessionToken } from "@/lib/session";
 import type { Role, User } from "@/generated/prisma/client";
 
-export type CurrentUser = Pick<User, "id" | "name" | "email" | "role" | "phone" | "active">;
+export type CurrentUser = Pick<User, "id" | "name" | "email" | "role" | "phone" | "active" | "lastNotificationsSeenAt">;
 
 // Roles that can see confidential fields (owner minimum price, internal legal
 // notes, confidential contact/requirement notes) per spec §10 & §13.
@@ -27,7 +27,7 @@ export const getCurrentUser = cache(async (): Promise<CurrentUser | null> => {
   if (!payload) return null;
   const user = await prisma.user.findUnique({
     where: { id: payload.userId },
-    select: { id: true, name: true, email: true, role: true, phone: true, active: true },
+    select: { id: true, name: true, email: true, role: true, phone: true, active: true, lastNotificationsSeenAt: true },
   });
   if (!user || !user.active) return null;
   return user;

@@ -20,6 +20,7 @@ import {
   BarChart3,
   ShieldCheck,
   Search,
+  StickyNote,
   ChevronsLeft,
   ChevronsRight,
   X,
@@ -48,6 +49,7 @@ const ICONS: Record<string, LucideIcon> = {
   BarChart3,
   ShieldCheck,
   Search,
+  StickyNote,
 };
 
 export function Sidebar({ items, user }: { items: NavItem[]; user: CurrentUser }) {
@@ -118,6 +120,8 @@ export function Sidebar({ items, user }: { items: NavItem[]; user: CurrentUser }
           </div>
           <button
             onClick={() => setCollapsed((c) => !c)}
+            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            title={collapsed ? "Expand sidebar" : undefined}
             className={clsx(
               "hidden w-full items-center gap-2 rounded-[3px] px-3.5 py-2 text-xs text-white/40 transition-colors hover:bg-white/[0.04] hover:text-white/80 lg:flex",
               collapsed && "lg:justify-center lg:px-0",

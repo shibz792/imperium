@@ -1,18 +1,24 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { Bell, CheckCircle2, FileWarning, ClipboardList } from "lucide-react";
 import { formatDate, formatCurrency } from "@/lib/format";
+import { markNotificationsSeen } from "@/lib/notifications-actions";
 
 type Task = { id: string; title: string; dueAt: Date | string; relatedEntityType: string | null; relatedEntityId: string | null };
 type Offer = { id: string; dealId: string; amount: number; deal: { property: { title: string } } };
 
 const ENTITY_PREFIX: Record<string, string> = { property: "/properties", requirement: "/requirements", deal: "/deals", contact: "/contacts" };
 
-export function NotificationBell({ tasks, offers, staleCount, overdueCount, total }: { tasks: Task[]; offers: Offer[]; staleCount: number; overdueCount: number; total: number }) {
+export function NotificationBell({ tasks, offers, staleCount, overdueCount, unseenCount, total }: { tasks: Task[]; offers: Offer[]; staleCount: number; overdueCount: number; unseenCount: number; total: number }) {
   const [open, setOpen] = useState(false);
+  // Optimistic: the badge clears the instant you open the bell, without
+  // waiting on the server round-trip or a full page revalidation.
+  const [seen, setSeen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const [, startTransition] = useTransition();
+  const badgeCount = seen ? 0 : unseenCount;
 
   useEffect(() => {
     function onClick(e: MouseEvent) {
@@ -22,17 +28,30 @@ export function NotificationBell({ tasks, offers, staleCount, overdueCount, tota
     return () => document.removeEventListener("mousedown", onClick);
   }, []);
 
+  function toggle() {
+    setOpen((o) => {
+      const next = !o;
+      if (next && unseenCount > 0) {
+        setSeen(true);
+        startTransition(() => {
+          markNotificationsSeen();
+        });
+      }
+      return next;
+    });
+  }
+
   return (
     <div className="relative" ref={ref}>
       <button
-        onClick={() => setOpen((o) => !o)}
+        onClick={toggle}
         aria-label="Notifications"
         className="relative flex h-8 w-8 items-center justify-center rounded-full text-white/70 hover:bg-white/10 hover:text-white"
       >
         <Bell size={16} />
-        {total > 0 && (
+        {badgeCount > 0 && (
           <span className={`absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[0.6rem] font-semibold text-white ${overdueCount > 0 ? "bg-[color:var(--color-brick)]" : "bg-ir-gold-dark"}`}>
-            {total > 9 ? "9+" : total}
+            {badgeCount > 9 ? "9+" : badgeCount}
           </span>
         )}
       </button>

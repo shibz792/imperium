@@ -43,6 +43,10 @@ model User {
   title        String?
   bio          String?
   territoryJson Json?
+  // The notification bell's badge only counts tasks/offers that showed up
+  // after this — opening the bell moves it forward, same as any "mark all
+  // read" pattern, without needing a separate read-state row per item.
+  lastNotificationsSeenAt DateTime?
   createdAt    DateTime @default(now())
 
   assignedProperties   Property[]       @relation("PropertyAgent")
@@ -61,6 +65,7 @@ model User {
   aiIntakeJobs         AiIntakeJob[]
   documentsUploaded    Document[]
   marketingApproved    MarketingAsset[] @relation("MarketingApprover")
+  notes                Note[]
 }
 
 // ---------------------------------------------------------------------------
@@ -279,6 +284,7 @@ model Property {
   sharePages      SharePage[]
   activities      Activity[]
   matchShares     MatchShare[]
+  notes           Note[]
 
   @@index([listingStatus])
   @@index([assignedAgentId])
@@ -773,5 +779,26 @@ model AuditLog {
 
   @@index([userId])
   @@index([entityType, entityId])
+  @@index([createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// Notes — a plain scratchpad, optionally attached to a property. Deliberately
+// unstructured (no categories, no rich text) so it's actually fast to jot
+// something down, the same reasoning behind the thin Contact model.
+// ---------------------------------------------------------------------------
+
+model Note {
+  id         String    @id @default(cuid())
+  content    String
+  propertyId String?
+  property   Property? @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  authorId   String?
+  author     User?     @relation(fields: [authorId], references: [id])
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@index([propertyId])
+  @@index([authorId])
   @@index([createdAt])
 }

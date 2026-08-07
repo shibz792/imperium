@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Pencil, ShieldCheck, ExternalLink } from "lucide-react";
+import { Pencil, ShieldCheck, ExternalLink, Trash2 } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireUser, canSeeConfidential } from "@/lib/auth";
 import { Badge, Field, PageHeader, SectionCard, Tabs, EmptyState } from "@/components/ui";
@@ -11,6 +11,9 @@ import { formatCurrency, formatDate, formatDateTime, titleCase, daysAgo } from "
 import { completenessScore, isStale, primarySize, relevantAskingPrice, clientPrice, priceUnit, whatsAppMessage } from "@/lib/property";
 import { scoreMatch, explainMatch } from "@/lib/match";
 import { verifyProperty, changeListingStatus } from "../actions";
+import { createNote, deleteNote } from "../../notes/actions";
+
+const CAN_DELETE_ANY_NOTE = ["SUPER_ADMIN", "DIRECTOR", "SALES_MANAGER"];
 
 const TABS = [
   { key: "overview", label: "Overview" },
@@ -22,6 +25,7 @@ const TABS = [
   { key: "viewings", label: "Viewings" },
   { key: "offers", label: "Offers" },
   { key: "marketing", label: "Marketing" },
+  { key: "notes", label: "Notes" },
   { key: "activity", label: "Activity" },
 ];
 
@@ -44,6 +48,7 @@ export default async function PropertyDetailPage({ params, searchParams }: { par
       activities: { include: { user: true }, orderBy: { createdAt: "desc" } },
       deals: { include: { client: true, requirement: true, assignedAgent: true, offers: true, commission: true, viewings: true } },
       viewings: { include: { contact: true, agent: true }, orderBy: { scheduledAt: "desc" } },
+      notes: { include: { author: true }, orderBy: { createdAt: "desc" } },
     },
   });
   if (!property) notFound();
@@ -425,6 +430,41 @@ export default async function PropertyDetailPage({ params, searchParams }: { par
                 </div>
               ))}
             </div>
+          )}
+        </SectionCard>
+      )}
+
+      {tab === "notes" && (
+        <SectionCard title="Notes">
+          <form action={createNote} className="mb-4">
+            <input type="hidden" name="propertyId" value={id} />
+            <textarea name="content" required rows={2} placeholder="Type a note about this property…" className="ir-input" />
+            <button type="submit" className="ir-btn ir-btn-primary mt-2">
+              Add note
+            </button>
+          </form>
+          {property.notes.length === 0 ? (
+            <EmptyState title="No notes on this property yet" />
+          ) : (
+            <ul className="space-y-3">
+              {property.notes.map((n) => (
+                <li key={n.id} className="border-b border-black/6 pb-3 last:border-0">
+                  <p className="whitespace-pre-wrap text-sm leading-relaxed text-ir-navy">{n.content}</p>
+                  <div className="mt-1.5 flex items-center justify-between text-xs text-black/40">
+                    <span>
+                      {n.author?.name ?? "Unknown"} · {formatDateTime(n.createdAt)}
+                    </span>
+                    {(n.authorId === user.id || CAN_DELETE_ANY_NOTE.includes(user.role)) && (
+                      <form action={deleteNote.bind(null, n.id)}>
+                        <button type="submit" title="Delete note" className="text-black/25 hover:text-[color:var(--color-brick)]">
+                          <Trash2 size={13} />
+                        </button>
+                      </form>
+                    )}
+                  </div>
+                </li>
+              ))}
+            </ul>
           )}
         </SectionCard>
       )}

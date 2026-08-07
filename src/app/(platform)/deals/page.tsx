@@ -2,13 +2,13 @@ import Link from "next/link";
 import { Plus } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { canSeeFinance, requireUser } from "@/lib/auth";
-import { PageHeader, Badge } from "@/components/ui";
+import { PageHeader, Badge, EmptyState } from "@/components/ui";
 import { ClickableRow } from "@/components/ClickableRow";
 import { Pagination } from "@/components/Pagination";
 import { paginationParams, totalPages as computeTotalPages } from "@/lib/pagination";
 import { DEAL_STAGES } from "@/lib/badges";
 import { formatCurrency } from "@/lib/format";
-import { updateDealStage } from "./actions";
+import { DealsKanban } from "./DealsKanban";
 
 const COLUMN_LABELS: Record<string, string> = {
   NEW_INQUIRY: "New inquiry",
@@ -23,16 +23,6 @@ const COLUMN_LABELS: Record<string, string> = {
   CLOSED_WON: "Closed won",
   CLOSED_LOST: "Closed lost",
 };
-
-// Grouped to match how a deal actually moves here: chasing it, matching /
-// showing inventory, then the closing mechanics. Purely a visual grouping
-// in the kanban header band — the stages themselves are unchanged.
-const STAGE_GROUPS: { label: string; stages: string[] }[] = [
-  { label: "Contact", stages: ["NEW_INQUIRY", "CONTACT_ATTEMPTED", "QUALIFIED"] },
-  { label: "Matching", stages: ["SHORTLISTED", "VIEWING_ARRANGED", "VIEWING_COMPLETED"] },
-  { label: "Closing", stages: ["NEGOTIATION", "OFFER_SUBMITTED", "AGREEMENT_PENDING"] },
-  { label: "Done", stages: ["CLOSED_WON", "CLOSED_LOST"] },
-];
 
 export default async function DealsPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   const sp = await searchParams;
@@ -71,52 +61,23 @@ export default async function DealsPage({ searchParams }: { searchParams: Promis
       />
 
       {view === "kanban" ? (
-        <div>
-          <div className="mb-2 flex gap-3 overflow-x-auto">
-            {STAGE_GROUPS.map((g) => (
-              <div key={g.label} className="ir-label !mb-0" style={{ width: g.stages.length * 292 - 12 }}>
-                {g.label}
-              </div>
-            ))}
-          </div>
-          <div className="flex gap-3 overflow-x-auto pb-4">
-            {DEAL_STAGES.map((stage) => {
-              const items = deals.filter((d) => d.stage === stage);
-              const stageValue = items.reduce((s, d) => s + (d.expectedValue ?? 0), 0);
-              return (
-                <div key={stage} className="w-[280px] shrink-0">
-                  <div className="mb-2 flex items-center justify-between px-1">
-                    <span className="text-xs font-semibold text-ir-navy">{COLUMN_LABELS[stage]}</span>
-                    <span className="text-[0.65rem] text-black/40">{items.length}</span>
-                  </div>
-                  <div className="mb-2 px-1 text-[0.7rem] text-black/35">{formatCurrency(stageValue)}</div>
-                  <div className="space-y-2.5">
-                    {items.map((d) => (
-                      <div key={d.id} className="ir-card ir-card-hover overflow-hidden">
-                        <Link href={`/deals/${d.id}`} className="block p-3">
-                          <div className="text-[0.8125rem] font-medium leading-snug text-ir-navy">{d.property.title}</div>
-                          <div className="mt-1.5 flex items-center justify-between">
-                            <span className="text-[0.7rem] text-black/45">{d.client.name}</span>
-                            <span className="ir-figure text-sm text-ir-navy">{formatCurrency(d.expectedValue)}</span>
-                          </div>
-                          <div className="mt-1 text-[0.7rem] text-black/40">{d.assignedAgent?.name ?? "Unassigned"}</div>
-                        </Link>
-                        {nextStage(stage) && (
-                          <form action={updateDealStage.bind(null, d.id, nextStage(stage)!)} className="border-t border-black/[0.06]">
-                            <button type="submit" className="w-full px-3 py-2 text-left text-[0.7rem] font-medium text-ir-gold-dark hover:bg-ir-gold/10">
-                              Move to {COLUMN_LABELS[nextStage(stage)!]} →
-                            </button>
-                          </form>
-                        )}
-                      </div>
-                    ))}
-                    {items.length === 0 && <div className="rounded border border-dashed border-black/10 p-3 text-center text-[0.7rem] text-black/30">Empty</div>}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
+        <DealsKanban
+          stages={DEAL_STAGES}
+          deals={deals.map((d) => ({
+            id: d.id,
+            stage: d.stage,
+            expectedValue: d.expectedValue,
+            property: { title: d.property.title },
+            client: { name: d.client.name },
+            assignedAgent: d.assignedAgent ? { name: d.assignedAgent.name } : null,
+          }))}
+        />
+      ) : deals.length === 0 ? (
+        <EmptyState
+          title="No deals yet"
+          description="A deal is created the moment a requirement is matched to a property. Start from Matchmaker, or add one directly."
+          action={<Link href="/deals/new" className="ir-btn ir-btn-gold"><Plus size={15} /> New deal</Link>}
+        />
       ) : (
         <div className="ir-card overflow-x-auto">
           <table className="w-full min-w-[900px] text-left text-sm">
@@ -152,10 +113,4 @@ export default async function DealsPage({ searchParams }: { searchParams: Promis
       {view === "list" && <Pagination page={page} totalPages={pages} total={deals.length} basePath="/deals" searchParams={sp} />}
     </div>
   );
-}
-
-function nextStage(current: string): string | null {
-  const idx = DEAL_STAGES.indexOf(current);
-  if (idx === -1 || idx >= DEAL_STAGES.length - 3) return null; // don't auto-advance into closed states
-  return DEAL_STAGES[idx + 1];
 }

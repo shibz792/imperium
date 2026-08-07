@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Sparkles } from "lucide-react";
 import { logoutAction } from "@/app/login/actions";
+import { requireUser } from "@/lib/auth";
 import { MobileMenuButton } from "@/components/MobileMenuButton";
 import { NotificationBell } from "@/components/NotificationBell";
 import { getNotificationSummary } from "@/lib/queries/notifications";
@@ -10,7 +11,8 @@ import { getNotificationSummary } from "@/lib/queries/notifications";
 // every admin template defaults to. Identity (avatar/name/role) lives once,
 // in the sidebar's own footer — this bar doesn't repeat it.
 export async function Topbar() {
-  const notifications = await getNotificationSummary();
+  const user = await requireUser();
+  const notifications = await getNotificationSummary(user.lastNotificationsSeenAt ?? null);
 
   return (
     <header className="sticky top-0 z-10 flex h-16 items-center justify-between gap-2 border-b border-ir-gold/20 bg-ir-navy px-4 sm:px-7">
