@@ -4,6 +4,8 @@ import { prisma } from "@/lib/prisma";
 import { canSeeFinance, requireUser } from "@/lib/auth";
 import { PageHeader, Badge } from "@/components/ui";
 import { ClickableRow } from "@/components/ClickableRow";
+import { Pagination } from "@/components/Pagination";
+import { paginationParams, totalPages as computeTotalPages } from "@/lib/pagination";
 import { DEAL_STAGES } from "@/lib/badges";
 import { formatCurrency } from "@/lib/format";
 import { updateDealStage } from "./actions";
@@ -37,10 +39,17 @@ export default async function DealsPage({ searchParams }: { searchParams: Promis
   const user = await requireUser();
   const view = sp.view === "list" ? "list" : "kanban";
 
+  // Kanban buckets by stage and the header's pipeline value both need the
+  // full set, not a page of it — pagination below only trims what the list
+  // view actually renders, sliced from data already in memory rather than
+  // a second query.
   const deals = await prisma.deal.findMany({
     include: { property: true, client: true, assignedAgent: true },
     orderBy: { updatedAt: "desc" },
   });
+  const { page, skip, take } = paginationParams(sp);
+  const pages = computeTotalPages(deals.length);
+  const pagedDeals = deals.slice(skip, skip + take);
 
   const openDeals = deals.filter((d) => d.stage !== "CLOSED_WON" && d.stage !== "CLOSED_LOST");
   const pipelineValue = openDeals.reduce((s, d) => s + (d.expectedValue ?? 0), 0);
@@ -122,7 +131,7 @@ export default async function DealsPage({ searchParams }: { searchParams: Promis
               </tr>
             </thead>
             <tbody>
-              {deals.map((d) => (
+              {pagedDeals.map((d) => (
                 <ClickableRow key={d.id} href={`/deals/${d.id}`} className="border-b border-black/6 last:border-0 hover:bg-black/[0.015]">
                   <td className="px-4 py-3">
                     <Link href={`/deals/${d.id}`} className="font-medium text-ir-navy hover:text-ir-gold-dark">{d.property.title}</Link>
@@ -139,6 +148,8 @@ export default async function DealsPage({ searchParams }: { searchParams: Promis
           </table>
         </div>
       )}
+
+      {view === "list" && <Pagination page={page} totalPages={pages} total={deals.length} basePath="/deals" searchParams={sp} />}
     </div>
   );
 }

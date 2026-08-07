@@ -6,6 +6,8 @@ import { REQUIREMENT_STATUS_TONE, URGENCY_TONE } from "@/lib/badges";
 import { formatCurrency, formatDate, titleCase, daysAgoDate } from "@/lib/format";
 import { PROPERTY_SUBTYPES } from "@/lib/locations";
 import { ClickableRow } from "@/components/ClickableRow";
+import { Pagination } from "@/components/Pagination";
+import { paginationParams, totalPages as computeTotalPages } from "@/lib/pagination";
 import type { Prisma } from "@/generated/prisma/client";
 
 export default async function RequirementsPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
@@ -23,16 +25,23 @@ export default async function RequirementsPage({ searchParams }: { searchParams:
     where.lastContacted = { lt: daysAgoDate(14) };
   }
 
-  const requirements = await prisma.requirement.findMany({
-    where,
-    include: { client: true, assignedAgent: true },
-    orderBy: { createdAt: "desc" },
-  });
+  const { page, skip, take } = paginationParams(sp);
+  const [requirements, total] = await Promise.all([
+    prisma.requirement.findMany({
+      where,
+      include: { client: true, assignedAgent: true },
+      orderBy: { createdAt: "desc" },
+      skip,
+      take,
+    }),
+    prisma.requirement.count({ where }),
+  ]);
+  const pages = computeTotalPages(total);
 
   return (
     <div>
       <PageHeader
-        eyebrow={`Requirements · ${requirements.length}`}
+        eyebrow={`Requirements · ${total}`}
         title="Requirement database"
         description="Buyer, tenant, investor and corporate mandates: first-class records, not notes under a contact."
         actions={
@@ -131,6 +140,8 @@ export default async function RequirementsPage({ searchParams }: { searchParams:
           </table>
         </div>
       )}
+
+      <Pagination page={page} totalPages={pages} total={total} basePath="/requirements" searchParams={sp} />
     </div>
   );
 }

@@ -113,6 +113,10 @@ model Contact {
   dealsAsBroker   Deal[]        @relation("DealOtherBroker")
   viewings        Viewing[]     @relation("ViewingContact")
   documents       Document[]
+
+  @@index([contactType])
+  @@index([assignedAgentId])
+  @@index([district])
 }
 
 // ---------------------------------------------------------------------------
@@ -260,6 +264,14 @@ model Property {
   sharePages      SharePage[]
   activities      Activity[]
   matchShares     MatchShare[]
+
+  @@index([listingStatus])
+  @@index([assignedAgentId])
+  @@index([ownerId])
+  @@index([district])
+  @@index([city])
+  @@index([category])
+  @@index([createdAt])
 }
 
 enum MediaType {
@@ -280,6 +292,8 @@ model PropertyMedia {
   branded    Boolean   @default(false)
   caption    String?
   createdAt  DateTime  @default(now())
+
+  @@index([propertyId])
 }
 
 // ---------------------------------------------------------------------------
@@ -386,6 +400,12 @@ model Requirement {
   deals       Deal[]
   activities  Activity[]
   matchShares MatchShare[]
+
+  @@index([status])
+  @@index([clientId])
+  @@index([assignedAgentId])
+  @@index([dealType])
+  @@index([category])
 }
 
 // ---------------------------------------------------------------------------
@@ -439,6 +459,13 @@ model Deal {
   offers     Offer[]
   commission Commission?
   activities Activity[]
+
+  @@index([stage])
+  @@index([propertyId])
+  @@index([clientId])
+  @@index([requirementId])
+  @@index([assignedAgentId])
+  @@index([otherBrokerId])
 }
 
 enum ViewingStatus {
@@ -464,6 +491,12 @@ model Viewing {
   feedbackRating Int?
   feedbackNotes  String?
   createdAt      DateTime      @default(now())
+
+  @@index([propertyId])
+  @@index([contactId])
+  @@index([dealId])
+  @@index([agentId])
+  @@index([scheduledAt])
 }
 
 enum OfferStatus {
@@ -484,6 +517,8 @@ model Offer {
   status      OfferStatus @default(SUBMITTED)
   createdAt   DateTime    @default(now())
   respondedAt DateTime?
+
+  @@index([dealId])
 }
 
 enum CommissionStatus {
@@ -541,6 +576,10 @@ model Document {
   uploadedById String?
   uploadedBy   User?            @relation(fields: [uploadedById], references: [id])
   createdAt    DateTime         @default(now())
+
+  @@index([propertyId])
+  @@index([contactId])
+  @@index([uploadedById])
 }
 
 enum MarketingContentType {
@@ -573,6 +612,9 @@ model MarketingAsset {
   approvedById String?
   approvedBy   User?                @relation("MarketingApprover", fields: [approvedById], references: [id])
   createdAt    DateTime             @default(now())
+
+  @@index([propertyId])
+  @@index([approvedById])
 }
 
 enum ShareVisibility {
@@ -595,6 +637,8 @@ model SharePage {
   hideExactLocation   Boolean         @default(true)
   viewCount           Int             @default(0)
   createdAt           DateTime        @default(now())
+
+  @@index([propertyId])
 }
 
 // ---------------------------------------------------------------------------
@@ -623,6 +667,8 @@ model AiIntakeJob {
   createdById String?
   createdBy   User?        @relation(fields: [createdById], references: [id])
   createdAt   DateTime     @default(now())
+
+  @@index([createdById])
 }
 
 // ---------------------------------------------------------------------------
@@ -638,6 +684,9 @@ model MatchShare {
   score         Int
   sharedAt      DateTime    @default(now())
   channel       String?
+
+  @@index([propertyId])
+  @@index([requirementId])
 }
 
 enum TaskType {
@@ -669,6 +718,10 @@ model Task {
   assignedTo        User?      @relation("TaskAssignee", fields: [assignedToId], references: [id])
   status            TaskStatus @default(OPEN)
   createdAt         DateTime   @default(now())
+
+  @@index([assignedToId])
+  @@index([status])
+  @@index([dueAt])
 }
 
 model Activity {
@@ -685,6 +738,11 @@ model Activity {
   userId        String?
   user          User?        @relation(fields: [userId], references: [id])
   createdAt     DateTime     @default(now())
+
+  @@index([propertyId])
+  @@index([requirementId])
+  @@index([dealId])
+  @@index([createdAt])
 }
 
 model AuditLog {
@@ -697,4 +755,8 @@ model AuditLog {
   before     Json?
   after      Json?
   createdAt  DateTime @default(now())
+
+  @@index([userId])
+  @@index([entityType, entityId])
+  @@index([createdAt])
 }

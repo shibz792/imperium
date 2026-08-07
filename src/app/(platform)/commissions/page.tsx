@@ -3,19 +3,33 @@ import { prisma } from "@/lib/prisma";
 import { requireRole, FINANCE_ROLES } from "@/lib/auth";
 import { PageHeader, Badge, StatTile, EmptyState } from "@/components/ui";
 import { ClickableRow } from "@/components/ClickableRow";
+import { Pagination } from "@/components/Pagination";
+import { paginationParams, totalPages as computeTotalPages } from "@/lib/pagination";
 import { COMMISSION_STATUS_TONE } from "@/lib/badges";
 import { formatCurrency, formatDate, titleCase } from "@/lib/format";
 import { updateCommissionStatus } from "./actions";
 
-export default async function CommissionsPage() {
+export default async function CommissionsPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   await requireRole(FINANCE_ROLES);
+  const sp = await searchParams;
+  const { page, skip, take } = paginationParams(sp);
 
-  const commissions = await prisma.commission.findMany({
-    include: { deal: { include: { property: true, client: true, assignedAgent: true } } },
-    orderBy: { createdAt: "desc" },
-  });
+  // Totals must reflect every commission on record, not just the page being
+  // displayed — a lighter, relation-free query for the math, separate from
+  // the paginated, fully-joined query used for the table rows below.
+  const [totalsSource, commissions, total] = await Promise.all([
+    prisma.commission.findMany({ select: { agencyFeeAmount: true, status: true, dueDate: true } }),
+    prisma.commission.findMany({
+      include: { deal: { include: { property: true, client: true, assignedAgent: true } } },
+      orderBy: { createdAt: "desc" },
+      skip,
+      take,
+    }),
+    prisma.commission.count(),
+  ]);
+  const pages = computeTotalPages(total);
 
-  const totals = commissions.reduce(
+  const totals = totalsSource.reduce(
     (acc, c) => {
       acc.total += c.agencyFeeAmount ?? 0;
       if (c.status === "PAID") acc.paid += c.agencyFeeAmount ?? 0;
@@ -28,7 +42,7 @@ export default async function CommissionsPage() {
 
   return (
     <div>
-      <PageHeader eyebrow={`Commission Centre · ${commissions.length}`} title="Commission Centre" description="Agency fees, broker splits and expected payments." />
+      <PageHeader eyebrow={`Commission Centre · ${total}`} title="Commission Centre" description="Agency fees, broker splits and expected payments." />
 
       <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
         <StatTile label="Total commission" value={formatCurrency(totals.total)} />
@@ -86,6 +100,8 @@ export default async function CommissionsPage() {
           </table>
         </div>
       )}
+
+      <Pagination page={page} totalPages={pages} total={total} basePath="/commissions" searchParams={sp} />
     </div>
   );
 }

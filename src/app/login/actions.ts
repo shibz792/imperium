@@ -33,6 +33,7 @@ export async function loginAction(_prev: LoginState, formData: FormData): Promis
   store.set(SESSION_COOKIE, token, {
     httpOnly: true,
     sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
     path: "/",
     maxAge: SESSION_MAX_AGE,
   });

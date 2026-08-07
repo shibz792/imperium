@@ -4,8 +4,16 @@ import crypto from "node:crypto";
 // the cookie itself is the credential, HMAC-signed so it can't be forged.
 // Good enough for a local/demo deployment; swap for NextAuth/Lucia + a real
 // session store before this ever leaves localhost.
-
-const SECRET = process.env.SESSION_SECRET || "imperium-realty-dev-secret-change-me";
+//
+// No fallback secret here on purpose: this file is on a public repo, so a
+// hardcoded default would be a hardcoded skeleton key. If SESSION_SECRET
+// isn't set, every signature check below fails closed instead of quietly
+// signing with a value anyone reading the source already knows.
+const rawSecret = process.env.SESSION_SECRET;
+if (!rawSecret) {
+  throw new Error("SESSION_SECRET is not set — generate one (e.g. `openssl rand -base64 48`) and add it to .env.");
+}
+const SECRET: string = rawSecret;
 const TTL_SECONDS = 60 * 60 * 24 * 7; // 7 days
 
 export type SessionPayload = {

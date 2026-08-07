@@ -5,6 +5,8 @@ import { requireUser, canSeeConfidential } from "@/lib/auth";
 import { PageHeader, Badge, EmptyState } from "@/components/ui";
 import { ClickableRow } from "@/components/ClickableRow";
 import { WhatsAppButton } from "@/components/WhatsAppButton";
+import { Pagination } from "@/components/Pagination";
+import { paginationParams, totalPages as computeTotalPages } from "@/lib/pagination";
 import { titleCase } from "@/lib/format";
 import type { Prisma } from "@/generated/prisma/client";
 
@@ -21,16 +23,23 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
     where.OR = [{ name: { contains: sp.q } }, { companyName: { contains: sp.q } }, { phone: { contains: sp.q } }, { contactRef: { contains: sp.q } }];
   }
 
-  const contacts = await prisma.contact.findMany({
-    where,
-    include: { assignedAgent: true, _count: { select: { ownedProperties: true, requirements: true } } },
-    orderBy: { createdAt: "desc" },
-  });
+  const { page, skip, take } = paginationParams(sp);
+  const [contacts, total] = await Promise.all([
+    prisma.contact.findMany({
+      where,
+      include: { assignedAgent: true, _count: { select: { ownedProperties: true, requirements: true } } },
+      orderBy: { createdAt: "desc" },
+      skip,
+      take,
+    }),
+    prisma.contact.count({ where }),
+  ]);
+  const pages = computeTotalPages(total);
 
   return (
     <div>
       <PageHeader
-        eyebrow={`Contacts · ${contacts.length}`}
+        eyebrow={`Contacts · ${total}`}
         title="Contacts & CRM"
         description="Owners, buyers, tenants, brokers, developers and investors: one record per relationship."
         actions={<Link href="/contacts/new" className="ir-btn ir-btn-primary"><Plus size={15} /> New contact</Link>}
@@ -93,6 +102,8 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
           </table>
         </div>
       )}
+
+      <Pagination page={page} totalPages={pages} total={total} basePath="/contacts" searchParams={sp} />
     </div>
   );
 }

@@ -8,6 +8,8 @@ import { completenessScore, isStale, primarySize, relevantAskingPrice, priceUnit
 import { ALL_DISTRICTS, PROPERTY_SUBTYPES } from "@/lib/locations";
 import { PropertyCard } from "@/components/PropertyCard";
 import { ClickableRow } from "@/components/ClickableRow";
+import { Pagination } from "@/components/Pagination";
+import { paginationParams, totalPages as computeTotalPages } from "@/lib/pagination";
 import type { Prisma } from "@/generated/prisma/client";
 
 export default async function PropertiesPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
@@ -30,11 +32,18 @@ export default async function PropertiesPage({ searchParams }: { searchParams: P
     where.OR = [{ lastVerifiedDate: null }, { lastVerifiedDate: { lt: daysAgoDate(30) } }];
   }
 
-  const properties = await prisma.property.findMany({
-    where,
-    include: { assignedAgent: true, owner: true },
-    orderBy: { createdAt: "desc" },
-  });
+  const { page, skip, take } = paginationParams(sp);
+  const [properties, total] = await Promise.all([
+    prisma.property.findMany({
+      where,
+      include: { assignedAgent: true, owner: true },
+      orderBy: { createdAt: "desc" },
+      skip,
+      take,
+    }),
+    prisma.property.count({ where }),
+  ]);
+  const pages = computeTotalPages(total);
 
   const view = sp.view === "cards" ? "cards" : "table";
   const qs = new URLSearchParams(Object.entries(sp).filter(([k, v]) => k !== "view" && v) as [string, string][]).toString();
@@ -43,7 +52,7 @@ export default async function PropertiesPage({ searchParams }: { searchParams: P
   return (
     <div>
       <PageHeader
-        eyebrow={`Properties · ${properties.length}`}
+        eyebrow={`Properties · ${total}`}
         title="Property database"
         description="Every property for sale, rent, lease or investment: structured, verified and ready to match."
         actions={
@@ -194,6 +203,8 @@ export default async function PropertiesPage({ searchParams }: { searchParams: P
           </table>
         </div>
       )}
+
+      <Pagination page={page} totalPages={pages} total={total} basePath="/properties" searchParams={sp} />
     </div>
   );
 }
