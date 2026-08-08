@@ -1,9 +1,22 @@
+import { prisma } from "@/lib/prisma";
+
 // Splits the agency fee between the company and the assigned agent. Two
 // rate shapes because agents in practice aren't all paid the same way: most
 // are a percentage cut of the fee, some senior/salaried arrangements are a
 // flat amount per deal regardless of size.
 
 export const DEFAULT_AGENT_SPLIT_PCT = 50;
+export const DEFAULT_AGENCY_FEE_PCT = 2.5;
+
+// The agency fee % a deal defaults to, keyed by the property's category —
+// a warehouse and a house don't necessarily earn the agency the same rate.
+// A deal's own expectedCommissionPct (typed in manually) always wins over
+// this; this is only the fallback used when closing a deal that never got
+// one, and as the pre-filled suggestion on the new-deal form.
+export async function agencyFeePctForCategory(category: string): Promise<number> {
+  const rule = await prisma.commissionRateRule.findUnique({ where: { category: category as never } });
+  return rule?.agencyFeePct ?? DEFAULT_AGENCY_FEE_PCT;
+}
 
 export type AgentRate = { commissionRateType?: string | null; commissionRate?: number | null } | null | undefined;
 

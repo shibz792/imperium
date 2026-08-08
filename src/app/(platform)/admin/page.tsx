@@ -3,7 +3,8 @@ import { prisma } from "@/lib/prisma";
 import { PageHeader, Badge, SectionCard, Tabs } from "@/components/ui";
 import { formatDateTime, titleCase } from "@/lib/format";
 import { SRI_LANKA_GEOGRAPHY, PROPERTY_SUBTYPES } from "@/lib/locations";
-import { createUser, toggleUserActive } from "./actions";
+import { DEFAULT_AGENCY_FEE_PCT } from "@/lib/commission";
+import { createUser, toggleUserActive, setCommissionRateRule } from "./actions";
 
 const ROLES = ["SUPER_ADMIN", "DIRECTOR", "SALES_MANAGER", "AGENT", "MARKETING", "LEGAL", "FINANCE", "EXTERNAL_BROKER", "OWNER_PORTAL", "CLIENT_PORTAL"];
 const TABS = [
@@ -104,20 +105,43 @@ function LocationsTab() {
   );
 }
 
-function CategoriesTab() {
+async function CategoriesTab() {
+  const rules = await prisma.commissionRateRule.findMany();
+  const rateFor = (category: string) => rules.find((r) => r.category === category)?.agencyFeePct ?? DEFAULT_AGENCY_FEE_PCT;
+
   return (
-    <SectionCard title="Property categories & subtypes">
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        {Object.entries(PROPERTY_SUBTYPES).map(([category, subtypes]) => (
-          <div key={category} className="rounded border border-black/8 p-3">
-            <div className="mb-1.5 text-sm font-medium text-ir-navy">{titleCase(category)}</div>
-            <div className="flex flex-wrap gap-1">
-              {subtypes.map((s) => <Badge key={s} tone="navy">{s}</Badge>)}
+    <div className="space-y-5">
+      <SectionCard title="Property categories & subtypes">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          {Object.entries(PROPERTY_SUBTYPES).map(([category, subtypes]) => (
+            <div key={category} className="rounded border border-black/8 p-3">
+              <div className="mb-1.5 text-sm font-medium text-ir-navy">{titleCase(category)}</div>
+              <div className="flex flex-wrap gap-1">
+                {subtypes.map((s) => <Badge key={s} tone="navy">{s}</Badge>)}
+              </div>
             </div>
-          </div>
-        ))}
-      </div>
-    </SectionCard>
+          ))}
+        </div>
+      </SectionCard>
+
+      <SectionCard title="Default agency fee by property type">
+        <p className="mb-4 text-xs text-black/45">
+          What a deal&apos;s agency fee % defaults to on Closed Won when no one&apos;s typed a specific one on the deal itself. A warehouse and a house don&apos;t have to earn the same rate.
+        </p>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {Object.keys(PROPERTY_SUBTYPES).map((category) => (
+            <form key={category} action={setCommissionRateRule.bind(null, category)} className="rounded border border-black/8 p-3">
+              <label className="ir-label mb-1.5 block">{titleCase(category)}</label>
+              <div className="flex items-center gap-1.5">
+                <input name="agencyFeePct" type="number" min={0} step="0.1" defaultValue={rateFor(category)} className="ir-input !py-1.5 !text-sm" />
+                <span className="text-xs text-black/40">%</span>
+              </div>
+              <button type="submit" className="ir-btn ir-btn-ghost mt-2 w-full !py-1 !text-[0.7rem]">Save</button>
+            </form>
+          ))}
+        </div>
+      </SectionCard>
+    </div>
   );
 }
 

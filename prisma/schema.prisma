@@ -173,6 +173,17 @@ enum PropertyCategory {
   LAND_AGRICULTURE
 }
 
+// The agency fee % a deal defaults to when no one's typed a specific one in
+// — a warehouse deal and a house sale don't necessarily earn the same rate.
+// One row per category, admin-editable (Admin → Categories); a missing row
+// falls back to a flat 2.5% (see computeAgencyFeePct in lib/commission.ts).
+model CommissionRateRule {
+  id           String           @id @default(cuid())
+  category     PropertyCategory @unique
+  agencyFeePct Float
+  updatedAt    DateTime         @updatedAt
+}
+
 enum TransactionType {
   SALE
   RENT

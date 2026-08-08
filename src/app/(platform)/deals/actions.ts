@@ -6,7 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
 import { nextDealRef } from "@/lib/refs";
 import { writeAudit, logActivity } from "@/lib/audit";
-import { computeAgentSplit } from "@/lib/commission";
+import { computeAgentSplit, agencyFeePctForCategory } from "@/lib/commission";
 
 function str(fd: FormData, key: string): string | undefined {
   const v = fd.get(key);
@@ -61,7 +61,7 @@ export async function updateDealStage(id: string, stage: string) {
       probability: stage === "CLOSED_WON" ? 100 : stage === "CLOSED_LOST" ? 0 : undefined,
       closingDate: isClosed ? new Date() : undefined,
     },
-    include: { commission: true, assignedAgent: true },
+    include: { commission: true, assignedAgent: true, property: true },
   });
   await logActivity({ entityType: "deal", dealId: id, type: "STAGE", message: `${user.name} moved this deal to ${stage.replace(/_/g, " ")}.`, userId: user.id });
   await writeAudit({ userId: user.id, action: "STAGE_CHANGE", entityType: "deal", entityId: id, after: { stage } });
@@ -71,7 +71,10 @@ export async function updateDealStage(id: string, stage: string) {
   // The agent's split comes from their own commission rate (set on their
   // agent profile) — a flat 50% for everyone was never actually right.
   if (stage === "CLOSED_WON" && !deal.commission && deal.expectedValue) {
-    const pct = deal.expectedCommissionPct ?? 2.5;
+    // A deal-specific rate (typed in on the deal) always wins; otherwise
+    // fall back to whatever this property's category is configured for
+    // (Admin → Categories) rather than one flat rate for every property.
+    const pct = deal.expectedCommissionPct ?? (await agencyFeePctForCategory(deal.property.category));
     const agencyFeeAmount = Math.round((deal.expectedValue * pct) / 100);
     const agentSplit = computeAgentSplit(agencyFeeAmount, deal.assignedAgent);
     await prisma.commission.create({

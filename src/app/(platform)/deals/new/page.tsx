@@ -49,7 +49,8 @@ export default async function NewDealPage({ searchParams }: { searchParams: Prom
           </div>
           <div>
             <label className="ir-label mb-1 block">Expected commission (%)</label>
-            <input name="expectedCommissionPct" type="number" step="0.1" defaultValue="2.5" className="ir-input" />
+            <input name="expectedCommissionPct" type="number" step="0.1" placeholder="Defaults by property type" className="ir-input" />
+            <p className="mt-1 text-[0.7rem] text-black/40">Leave blank to use the rate configured for this property&apos;s category (Admin → Categories).</p>
           </div>
           <div>
             <label className="ir-label mb-1 block">Probability (%)</label>

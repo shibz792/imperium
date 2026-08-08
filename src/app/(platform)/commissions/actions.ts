@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/auth";
 import { writeAudit } from "@/lib/audit";
 import { FINANCE_ROLES } from "@/lib/auth";
-import { computeAgentSplit } from "@/lib/commission";
+import { computeAgentSplit, DEFAULT_AGENCY_FEE_PCT } from "@/lib/commission";
 
 export async function updateCommissionStatus(id: string, status: string) {
   const user = await requireRole(FINANCE_ROLES);
@@ -34,7 +34,7 @@ export async function updateCommissionSplit(commissionId: string, formData: Form
   const commission = await prisma.commission.findUnique({ where: { id: commissionId }, include: { deal: true } });
   if (!commission) return;
 
-  const agencyFeePct = num(formData, "agencyFeePct") ?? commission.agencyFeePct ?? 2.5;
+  const agencyFeePct = num(formData, "agencyFeePct") ?? commission.agencyFeePct ?? DEFAULT_AGENCY_FEE_PCT;
   const agencyFeeAmount = Math.round(((commission.deal.expectedValue ?? 0) * agencyFeePct) / 100);
 
   const commissionRateType = formData.get("agentSplitType") === "FIXED" ? "FIXED" : "PERCENT";

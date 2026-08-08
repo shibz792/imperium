@@ -38,3 +38,18 @@ export async function toggleUserActive(id: string, active: boolean) {
   await writeAudit({ userId: admin.id, action: active ? "ACTIVATE" : "DEACTIVATE", entityType: "user", entityId: id });
   revalidatePath("/admin");
 }
+
+export async function setCommissionRateRule(category: string, formData: FormData) {
+  const admin = await requireRole(["SUPER_ADMIN"]);
+  const raw = str(formData, "agencyFeePct");
+  const agencyFeePct = raw ? Number(raw) : NaN;
+  if (Number.isNaN(agencyFeePct) || agencyFeePct < 0) return;
+
+  await prisma.commissionRateRule.upsert({
+    where: { category: category as never },
+    create: { category: category as never, agencyFeePct },
+    update: { agencyFeePct },
+  });
+  await writeAudit({ userId: admin.id, action: "SET_COMMISSION_RATE_RULE", entityType: "commissionRateRule", entityId: category, after: { agencyFeePct } });
+  revalidatePath("/admin");
+}
