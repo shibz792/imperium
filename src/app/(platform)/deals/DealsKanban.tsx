@@ -51,6 +51,20 @@ export function DealsKanban({ deals: initialDeals, stages }: { deals: KanbanDeal
   const [dragOverStage, setDragOverStage] = useState<string | null>(null);
   const [, startTransition] = useTransition();
 
+  // useState(initialDeals) only reads that value on the very first mount —
+  // if this component instance ever gets reused across a server refetch
+  // (a revalidation, an App Router navigation that doesn't remount it)
+  // instead of a fresh mount, the board would keep showing whatever it
+  // first loaded with. React's own recommended fix for "reset state when a
+  // prop changes": compare during render and adjust immediately, not in a
+  // useEffect (which would cost an extra render pass) — see
+  // https://react.dev/learn/you-might-not-need-an-effect#adjusting-some-state-when-a-prop-changes.
+  const [prevInitialDeals, setPrevInitialDeals] = useState(initialDeals);
+  if (initialDeals !== prevInitialDeals) {
+    setPrevInitialDeals(initialDeals);
+    setDeals(initialDeals);
+  }
+
   const byStage = useMemo(() => {
     const map = new Map<string, KanbanDeal[]>();
     for (const stage of stages) map.set(stage, []);
