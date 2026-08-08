@@ -2,6 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
+import { GripVertical } from "lucide-react";
 import { formatCurrency } from "@/lib/format";
 import { updateDealStage } from "./actions";
 
@@ -116,18 +117,29 @@ export function DealsKanban({ deals: initialDeals, stages }: { deals: KanbanDeal
                   return (
                     <div
                       key={d.id}
-                      draggable
-                      onDragStart={(e) => {
-                        setDraggingId(d.id);
-                        e.dataTransfer.effectAllowed = "move";
-                      }}
-                      onDragEnd={() => {
-                        setDraggingId(null);
-                        setDragOverStage(null);
-                      }}
-                      className={`ir-card ir-card-hover cursor-grab overflow-hidden active:cursor-grabbing ${draggingId === d.id ? "opacity-35" : ""}`}
+                      className={`group/card ir-card ir-card-hover relative overflow-hidden ${draggingId === d.id ? "opacity-35" : ""}`}
                     >
-                      <Link href={`/deals/${d.id}`} className="block p-3">
+                      {/* A dedicated handle, not the whole card — a card-wide
+                          draggable="true" swallows any click that has even a
+                          pixel of drift as a drag instead of a navigation
+                          click, which made the card unopenable more often
+                          than not. Only this handle initiates a drag. */}
+                      <span
+                        draggable
+                        onDragStart={(e) => {
+                          setDraggingId(d.id);
+                          e.dataTransfer.effectAllowed = "move";
+                        }}
+                        onDragEnd={() => {
+                          setDraggingId(null);
+                          setDragOverStage(null);
+                        }}
+                        title="Drag to move stage"
+                        className="absolute right-1 top-1 z-10 flex h-6 w-6 cursor-grab items-center justify-center rounded text-black/15 opacity-0 transition-opacity hover:bg-black/5 hover:text-black/45 focus-visible:opacity-100 active:cursor-grabbing group-hover/card:opacity-100"
+                      >
+                        <GripVertical size={14} />
+                      </span>
+                      <Link href={`/deals/${d.id}`} className="block p-3 pr-8">
                         <div className="text-[0.8125rem] font-medium leading-snug text-ir-navy">{d.property.title}</div>
                         <div className="mt-1.5 flex items-center justify-between">
                           <span className="text-[0.7rem] text-black/45">{d.client.name}</span>
