@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Sparkles } from "lucide-react";
+import { Sparkles, ListTodo, StickyNote } from "lucide-react";
 import { logoutAction } from "@/app/login/actions";
 import { requireUser } from "@/lib/auth";
 import { MobileMenuButton } from "@/components/MobileMenuButton";
@@ -27,6 +27,13 @@ export async function Topbar() {
         <Link href="/ai-intake" className="ir-btn ir-btn-gold !px-2.5 sm:!px-3.5">
           <Sparkles size={14} />
           <span className="hidden sm:inline">AI Intake</span>
+        </Link>
+
+        <Link href="/tasks" title="Tasks" aria-label="Tasks" className="flex h-8 w-8 items-center justify-center rounded-full text-white/70 hover:bg-white/10 hover:text-white">
+          <ListTodo size={16} />
+        </Link>
+        <Link href="/notes" title="Notes" aria-label="Notes" className="flex h-8 w-8 items-center justify-center rounded-full text-white/70 hover:bg-white/10 hover:text-white">
+          <StickyNote size={16} />
         </Link>
 
         <div className="mx-0.5 h-6 w-px bg-white/[0.1] sm:mx-1.5" />
