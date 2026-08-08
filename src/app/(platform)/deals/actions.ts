@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
 import { nextDealRef } from "@/lib/refs";
 import { writeAudit, logActivity } from "@/lib/audit";
+import { computeAgentSplit } from "@/lib/commission";
 
 function str(fd: FormData, key: string): string | undefined {
   const v = fd.get(key);
@@ -60,23 +61,27 @@ export async function updateDealStage(id: string, stage: string) {
       probability: stage === "CLOSED_WON" ? 100 : stage === "CLOSED_LOST" ? 0 : undefined,
       closingDate: isClosed ? new Date() : undefined,
     },
-    include: { commission: true },
+    include: { commission: true, assignedAgent: true },
   });
   await logActivity({ entityType: "deal", dealId: id, type: "STAGE", message: `${user.name} moved this deal to ${stage.replace(/_/g, " ")}.`, userId: user.id });
   await writeAudit({ userId: user.id, action: "STAGE_CHANGE", entityType: "deal", entityId: id, after: { stage } });
 
   // Auto-draft a commission record the first time a deal closes won — spec
   // §7 "commission tracking" should never require a separate manual step.
+  // The agent's split comes from their own commission rate (set on their
+  // agent profile) — a flat 50% for everyone was never actually right.
   if (stage === "CLOSED_WON" && !deal.commission && deal.expectedValue) {
     const pct = deal.expectedCommissionPct ?? 2.5;
     const agencyFeeAmount = Math.round((deal.expectedValue * pct) / 100);
+    const agentSplit = computeAgentSplit(agencyFeeAmount, deal.assignedAgent);
     await prisma.commission.create({
       data: {
         dealId: id,
         agencyFeePct: pct,
         agencyFeeAmount,
-        agentSplitPct: 50,
-        agentSplitAmount: Math.round(agencyFeeAmount * 0.5),
+        agentSplitType: agentSplit.type,
+        agentSplitPct: agentSplit.pct,
+        agentSplitAmount: agentSplit.amount,
         brokerSplitPct: deal.otherBrokerId ? 20 : 0,
         brokerSplitAmount: deal.otherBrokerId ? Math.round(agencyFeeAmount * 0.2) : 0,
         status: "PENDING",

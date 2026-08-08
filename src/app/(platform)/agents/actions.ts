@@ -19,6 +19,12 @@ function list(fd: FormData, key: string): string[] {
   if (!v) return [];
   return v.split(",").map((s) => s.trim()).filter(Boolean);
 }
+function num(fd: FormData, key: string): number | undefined {
+  const v = str(fd, key);
+  if (v === undefined) return undefined;
+  const n = Number(v);
+  return Number.isNaN(n) ? undefined : n;
+}
 
 export async function createAgent(formData: FormData) {
   const manager = await requireRole([...MANAGE_ROLES]);
@@ -36,6 +42,8 @@ export async function createAgent(formData: FormData) {
       title: str(formData, "title"),
       bio: str(formData, "bio"),
       territoryJson: list(formData, "territory"),
+      commissionRateType: (str(formData, "commissionRateType") ?? "PERCENT") as never,
+      commissionRate: num(formData, "commissionRate"),
     },
   });
 
@@ -54,6 +62,8 @@ export async function updateAgentProfile(id: string, formData: FormData) {
     title: str(formData, "title"),
     bio: str(formData, "bio"),
     territoryJson: list(formData, "territory"),
+    commissionRateType: (str(formData, "commissionRateType") ?? "PERCENT") as never,
+    commissionRate: num(formData, "commissionRate") ?? null,
   };
 
   await prisma.user.update({ where: { id }, data });

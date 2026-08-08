@@ -7,6 +7,8 @@ import { WhatsAppButton } from "@/components/WhatsAppButton";
 import { DEAL_STAGE_TONE, OFFER_STATUS_TONE, VIEWING_STATUS_TONE, COMMISSION_STATUS_TONE } from "@/lib/badges";
 import { formatCurrency, formatDate, formatDateTime, titleCase } from "@/lib/format";
 import { updateDealStage, addOffer, respondOffer, addDealCollaborator } from "../actions";
+import { updateCommissionSplit } from "../../commissions/actions";
+import { companyAmount } from "@/lib/commission";
 
 export default async function DealDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -134,14 +136,44 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
           {!deal.commission ? (
             <EmptyState title="Not yet finalised" description="Commission records are created when a deal closes." action={<Link href="/commissions" className="ir-btn ir-btn-ghost">Commission Centre</Link>} />
           ) : (
-            <div className="grid grid-cols-2 gap-4">
-              <Field label="Agency fee" value={formatCurrency(deal.commission.agencyFeeAmount)} />
-              <Field label="Status" value={<Badge tone={(COMMISSION_STATUS_TONE[deal.commission.status] as never) ?? "gray"}>{titleCase(deal.commission.status)}</Badge>} />
-              <Field label="Agent split" value={formatCurrency(deal.commission.agentSplitAmount)} />
-              <Field label="Broker split" value={formatCurrency(deal.commission.brokerSplitAmount)} />
-              <Field label="Due date" value={formatDate(deal.commission.dueDate)} />
-              <Field label="Paid date" value={formatDate(deal.commission.paidDate)} />
-            </div>
+            <>
+              <div className="grid grid-cols-2 gap-4">
+                <Field label="Agency fee" value={`${formatCurrency(deal.commission.agencyFeeAmount)} (${deal.commission.agencyFeePct}%)`} />
+                <Field label="Status" value={<Badge tone={(COMMISSION_STATUS_TONE[deal.commission.status] as never) ?? "gray"}>{titleCase(deal.commission.status)}</Badge>} />
+                <Field
+                  label={`Agent split${deal.assignedAgent ? ` (${deal.assignedAgent.name})` : ""}`}
+                  value={`${formatCurrency(deal.commission.agentSplitAmount)}${deal.commission.agentSplitType === "PERCENT" ? ` (${deal.commission.agentSplitPct}%)` : deal.commission.agentSplitType === "FIXED" ? " (flat)" : ""}`}
+                />
+                <Field label="Broker split" value={deal.commission.brokerSplitAmount ? `${formatCurrency(deal.commission.brokerSplitAmount)} (${deal.commission.brokerSplitPct}%)` : "-"} />
+                <Field label="Company keeps" value={formatCurrency(companyAmount(deal.commission.agencyFeeAmount, deal.commission.agentSplitAmount, deal.commission.brokerSplitAmount))} />
+                <Field label="Due date" value={formatDate(deal.commission.dueDate)} />
+              </div>
+
+              {showFinance && (
+                <form action={updateCommissionSplit.bind(null, deal.commission.id)} className="mt-4 grid grid-cols-2 gap-3 border-t border-black/6 pt-4 sm:grid-cols-4">
+                  <div>
+                    <label className="ir-label mb-1 block">Agency fee %</label>
+                    <input name="agencyFeePct" type="number" step="0.1" min={0} defaultValue={deal.commission.agencyFeePct ?? undefined} className="ir-input !py-1.5 !text-xs" />
+                  </div>
+                  <div>
+                    <label className="ir-label mb-1 block">Agent paid</label>
+                    <select name="agentSplitType" defaultValue={deal.commission.agentSplitType ?? "PERCENT"} className="ir-select !py-1.5 !text-xs">
+                      <option value="PERCENT">% of fee</option>
+                      <option value="FIXED">Flat amount</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="ir-label mb-1 block">Agent rate</label>
+                    <input name="agentSplitRate" type="number" min={0} defaultValue={deal.commission.agentSplitPct ?? deal.commission.agentSplitAmount ?? undefined} className="ir-input !py-1.5 !text-xs" />
+                  </div>
+                  <div>
+                    <label className="ir-label mb-1 block">Broker split %</label>
+                    <input name="brokerSplitPct" type="number" step="0.1" min={0} defaultValue={deal.commission.brokerSplitPct ?? 0} className="ir-input !py-1.5 !text-xs" />
+                  </div>
+                  <button type="submit" className="ir-btn ir-btn-ghost col-span-2 !text-xs sm:col-span-4">Recalculate split</button>
+                </form>
+              )}
+            </>
           )}
         </SectionCard>
       </div>

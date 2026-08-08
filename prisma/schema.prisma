@@ -47,6 +47,13 @@ model User {
   // after this — opening the bell moves it forward, same as any "mark all
   // read" pattern, without needing a separate read-state row per item.
   lastNotificationsSeenAt DateTime?
+  // This agent's default commission terms — used whenever a deal they're
+  // assigned to auto-drafts a Commission on Closed Won. PERCENT is a % of
+  // the agency fee; FIXED is a flat LKR amount per deal. Null rate falls
+  // back to the company default split (50%). A specific deal's commission
+  // can still be adjusted afterward without touching this default.
+  commissionRateType CommissionRateType @default(PERCENT)
+  commissionRate      Float?
   createdAt    DateTime @default(now())
 
   assignedProperties   Property[]       @relation("PropertyAgent")
@@ -580,20 +587,34 @@ enum CommissionStatus {
 }
 
 model Commission {
-  id                String           @id @default(cuid())
-  dealId            String           @unique
-  deal              Deal             @relation(fields: [dealId], references: [id])
+  id                String              @id @default(cuid())
+  dealId            String              @unique
+  deal              Deal                @relation(fields: [dealId], references: [id])
   agencyFeePct      Float?
   agencyFeeAmount   Float?
+  // How agentSplitAmount below was actually derived for this deal — kept
+  // alongside the amount even if the agent's own default rate changes
+  // later, so a paid-out commission's record doesn't silently reinterpret
+  // itself. agentSplitPct is null when the split was a flat FIXED amount.
+  agentSplitType    CommissionRateType?
   agentSplitPct     Float?
   agentSplitAmount  Float?
   brokerSplitPct    Float?
   brokerSplitAmount Float?
-  status            CommissionStatus @default(PENDING)
+  status            CommissionStatus    @default(PENDING)
   dueDate           DateTime?
   paidDate          DateTime?
   notes             String?
-  createdAt         DateTime         @default(now())
+  createdAt         DateTime            @default(now())
+}
+
+// PERCENT: agentSplitAmount = agencyFeeAmount × rate/100 (the common case).
+// FIXED: agentSplitAmount = rate itself, a flat LKR amount regardless of
+// deal size (capped at the agency fee so the company split can't go
+// negative) — some senior agents are paid this way instead of a cut.
+enum CommissionRateType {
+  PERCENT
+  FIXED
 }
 
 // ---------------------------------------------------------------------------
