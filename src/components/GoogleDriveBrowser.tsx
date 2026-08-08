@@ -17,7 +17,7 @@ export function GoogleDriveBrowser({
   filter = "any",
   label = "Import from Drive",
 }: {
-  onImport: (fileIds: string[]) => Promise<void>;
+  onImport: (fileIds: string[]) => Promise<{ ok: boolean; error?: string } | void>;
   filter?: "image" | "any";
   label?: string;
 }) {
@@ -27,6 +27,7 @@ export function GoogleDriveBrowser({
   const [trail, setTrail] = useState<{ id?: string; name: string }[]>([{ id: undefined, name: "My Drive" }]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [importError, setImportError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
   async function load(folderId?: string) {
@@ -69,8 +70,13 @@ export function GoogleDriveBrowser({
 
   function doImport() {
     const ids = Array.from(selected);
+    setImportError(null);
     startTransition(async () => {
-      await onImport(ids);
+      const result = await onImport(ids);
+      if (result && !result.ok) {
+        setImportError(result.error ?? "Import failed.");
+        return;
+      }
       setOpen(false);
     });
   }
@@ -135,11 +141,14 @@ export function GoogleDriveBrowser({
           )}
         </div>
 
-        <div className="flex items-center justify-between border-t border-black/8 p-3">
-          <span className="text-xs text-black/40">{selected.size} selected</span>
-          <button type="button" disabled={selected.size === 0 || pending} onClick={doImport} className="ir-btn ir-btn-primary disabled:opacity-50">
-            {pending ? <Loader2 size={14} className="animate-spin" /> : <CloudDownload size={14} />} Import{selected.size > 0 ? ` (${selected.size})` : ""}
-          </button>
+        <div className="border-t border-black/8 p-3">
+          {importError && <p className="mb-2 text-xs text-[color:var(--color-brick)]">{importError}</p>}
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-black/40">{selected.size} selected</span>
+            <button type="button" disabled={selected.size === 0 || pending} onClick={doImport} className="ir-btn ir-btn-primary disabled:opacity-50">
+              {pending ? <Loader2 size={14} className="animate-spin" /> : <CloudDownload size={14} />} Import{selected.size > 0 ? ` (${selected.size})` : ""}
+            </button>
+          </div>
         </div>
       </div>
     </div>

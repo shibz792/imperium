@@ -3,13 +3,14 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import { requireUser } from "@/lib/auth";
+import { requireUser, isAdmin } from "@/lib/auth";
 import { nextPropertyRef, nextContactRef } from "@/lib/refs";
 import { writeAudit, logActivity } from "@/lib/audit";
 import { districtForCity } from "@/lib/locations";
 import { applyMarkup } from "@/lib/property";
-import { savePropertyPhoto, deletePropertyPhoto, savePhotoBuffer } from "@/lib/storage";
-import { downloadDriveFile } from "@/lib/google";
+import { downloadDriveFile, ensurePropertyDriveFolder, uploadToPropertyFolder, trashDriveFile } from "@/lib/google";
+
+const NO_STORAGE_ACCOUNT_ERROR = "No Google Drive storage account is configured yet — an admin needs to connect one and designate it in Settings.";
 
 function str(fd: FormData, key: string): string | undefined {
   const v = fd.get(key);
@@ -209,36 +210,42 @@ export async function changeListingStatus(id: string, status: string) {
 }
 
 // ---------------------------------------------------------------------------
-// Media — photos, drone shots, floor plans. Uploaded straight into the
-// app's own storage (no external drive needed); the first photo a property
-// ever gets is automatically its cover, same principle as "the first note
-// you write doesn't need a category" — the common case should need zero
-// extra clicks.
+// Media — photos, drone shots, floor plans. Every property gets its own
+// folder in the company's shared Google Drive (created on first upload,
+// under "Imperium Realty — Property Media") — nothing is kept in our own
+// storage. Anyone signed in can upload or view; only an admin can delete
+// (deletePropertyMedia). The first photo a property ever gets is
+// automatically its cover.
 // ---------------------------------------------------------------------------
 
-export async function uploadPropertyPhotos(propertyId: string, formData: FormData) {
+export async function uploadPropertyPhotos(propertyId: string, formData: FormData): Promise<{ ok: boolean; error?: string }> {
   const user = await requireUser();
   const files = formData.getAll("files").filter((f): f is File => f instanceof File && f.size > 0);
-  if (files.length === 0) return;
+  if (files.length === 0) return { ok: true };
+
+  const property = await prisma.property.findUnique({ where: { id: propertyId }, select: { propertyRef: true, title: true } });
+  if (!property) return { ok: false, error: "Property not found." };
+
+  const folderId = await ensurePropertyDriveFolder(propertyId, property.propertyRef, property.title);
+  if (!folderId) return { ok: false, error: NO_STORAGE_ACCOUNT_ERROR };
 
   const existingCount = await prisma.propertyMedia.count({ where: { propertyId } });
-
-  for (const [i, file] of files.entries()) {
-    const { url } = await savePropertyPhoto(file);
+  let uploaded = 0;
+  for (const file of files) {
+    const buffer = Buffer.from(await file.arrayBuffer());
+    const fileId = await uploadToPropertyFolder(folderId, buffer, file.name, file.type || "image/jpeg");
+    if (!fileId) continue;
     await prisma.propertyMedia.create({
-      data: { propertyId, url, type: "PHOTO", isCover: existingCount === 0 && i === 0 },
+      data: { propertyId, url: `/api/drive-media/${fileId}`, driveFileId: fileId, type: "PHOTO", isCover: existingCount === 0 && uploaded === 0 },
     });
+    uploaded++;
   }
+  if (uploaded === 0) return { ok: false, error: "Upload to Drive failed — try again." };
 
-  await logActivity({
-    entityType: "property",
-    propertyId,
-    type: "MEDIA_UPLOADED",
-    message: `${user.name} added ${files.length} photo${files.length === 1 ? "" : "s"}.`,
-    userId: user.id,
-  });
+  await logActivity({ entityType: "property", propertyId, type: "MEDIA_UPLOADED", message: `${user.name} added ${uploaded} photo${uploaded === 1 ? "" : "s"}.`, userId: user.id });
   revalidatePath(`/properties/${propertyId}`);
   revalidatePath("/properties");
+  return { ok: true };
 }
 
 export async function setCoverPhoto(propertyId: string, mediaId: string) {
@@ -252,14 +259,13 @@ export async function setCoverPhoto(propertyId: string, mediaId: string) {
 }
 
 export async function deletePropertyMedia(propertyId: string, mediaId: string) {
-  await requireUser();
+  const user = await requireUser();
+  if (!isAdmin(user)) throw new Error("Only an admin can delete property media.");
   const media = await prisma.propertyMedia.findUnique({ where: { id: mediaId } });
   if (!media || media.propertyId !== propertyId) return;
 
   await prisma.propertyMedia.delete({ where: { id: mediaId } });
-  // Best-effort storage cleanup — shouldn't block the DB delete if it fails.
-  const storedName = media.url.split("/").pop();
-  if (storedName) await deletePropertyPhoto(storedName).catch(() => {});
+  if (media.driveFileId) await trashDriveFile(media.driveFileId).catch(() => {});
 
   if (media.isCover) {
     const next = await prisma.propertyMedia.findFirst({ where: { propertyId }, orderBy: { createdAt: "asc" } });
@@ -269,18 +275,28 @@ export async function deletePropertyMedia(propertyId: string, mediaId: string) {
   revalidatePath("/properties");
 }
 
-export async function importPhotosFromDrive(propertyId: string, fileIds: string[]) {
+export async function importPhotosFromDrive(propertyId: string, fileIds: string[]): Promise<{ ok: boolean; error?: string }> {
   const user = await requireUser();
-  if (fileIds.length === 0) return;
+  if (fileIds.length === 0) return { ok: true };
+
+  const property = await prisma.property.findUnique({ where: { id: propertyId }, select: { propertyRef: true, title: true } });
+  if (!property) return { ok: false, error: "Property not found." };
+
+  const folderId = await ensurePropertyDriveFolder(propertyId, property.propertyRef, property.title);
+  if (!folderId) return { ok: false, error: NO_STORAGE_ACCOUNT_ERROR };
 
   const existingCount = await prisma.propertyMedia.count({ where: { propertyId } });
   let imported = 0;
   for (const fileId of fileIds) {
+    // Downloaded using the browsing user's own Drive connection (wherever
+    // the file actually lives), then re-uploaded into the storage
+    // account's property folder — the two can be different accounts.
     const file = await downloadDriveFile(user.id, fileId);
-    if (!file || !file.mimeType.startsWith("image/")) continue; // skip anything that isn't a photo, silently
-    const { url } = await savePhotoBuffer(file.buffer, file.name, file.mimeType);
+    if (!file || !file.mimeType.startsWith("image/")) continue;
+    const newFileId = await uploadToPropertyFolder(folderId, file.buffer, file.name, file.mimeType);
+    if (!newFileId) continue;
     await prisma.propertyMedia.create({
-      data: { propertyId, url, type: "PHOTO", isCover: existingCount === 0 && imported === 0 },
+      data: { propertyId, url: `/api/drive-media/${newFileId}`, driveFileId: newFileId, type: "PHOTO", isCover: existingCount === 0 && imported === 0 },
     });
     imported++;
   }
@@ -290,4 +306,5 @@ export async function importPhotosFromDrive(propertyId: string, fileIds: string[
   }
   revalidatePath(`/properties/${propertyId}`);
   revalidatePath("/properties");
+  return { ok: true };
 }

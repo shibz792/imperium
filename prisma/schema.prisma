@@ -93,6 +93,13 @@ model GoogleAccount {
   refreshToken String
   expiresAt    DateTime
   scope        String
+  // The one connected account (of possibly several — everyone can connect
+  // their own for Calendar) designated as the company's shared Drive for
+  // property media. Admin-only to change; at most one true at a time,
+  // enforced in the designateStorageAccount action rather than the schema.
+  // Uploads/imports/views use this account's Drive regardless of who's
+  // logged into the CRM at the time.
+  isStorageAccount Boolean @default(false)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 }
@@ -217,6 +224,10 @@ model Property {
   propertyRef String  @unique
   title       String
   description String?
+  // Cached so media uploads don't re-search Drive for "does this property's
+  // folder already exist" on every file — set the first time this property
+  // gets a photo, in the company Drive's Property Media root folder.
+  driveMediaFolderId String?
 
   category        PropertyCategory
   subtype         String
@@ -337,7 +348,13 @@ model PropertyMedia {
   id         String    @id @default(cuid())
   propertyId String
   property   Property  @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  // Servable URL — our own /api/drive-media/[fileId] proxy, not a direct
+  // Drive link, so it works whether or not the file's public-permission
+  // survives a manual edit in Drive itself. driveFileId is the real
+  // identity; url is derived from it at upload time and kept for
+  // convenience (every render site already just reads .url as an <img> src).
   url        String
+  driveFileId String?
   type       MediaType
   branded    Boolean   @default(false)
   caption    String?

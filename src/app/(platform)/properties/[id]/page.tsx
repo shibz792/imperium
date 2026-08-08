@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Pencil, ShieldCheck, ExternalLink, Trash2, Star, CheckCircle2, Circle } from "lucide-react";
 import { prisma } from "@/lib/prisma";
-import { requireUser, canSeeConfidential } from "@/lib/auth";
+import { requireUser, canSeeConfidential, isAdmin } from "@/lib/auth";
 import { Badge, Field, PageHeader, SectionCard, Tabs, EmptyState } from "@/components/ui";
 import { WhatsAppButton } from "@/components/WhatsAppButton";
 import { CopyableMessage } from "@/components/CopyableMessage";
@@ -262,11 +262,13 @@ export default async function PropertyDetailPage({ params, searchParams }: { par
                         </button>
                       </form>
                     )}
-                    <form action={deletePropertyMedia.bind(null, id, m.id)}>
-                      <button type="submit" title="Delete photo" className="flex h-7 w-7 items-center justify-center rounded-full bg-black/55 text-white hover:bg-[color:var(--color-brick)]">
-                        <Trash2 size={13} />
-                      </button>
-                    </form>
+                    {isAdmin(user) && (
+                      <form action={deletePropertyMedia.bind(null, id, m.id)}>
+                        <button type="submit" title="Delete photo" className="flex h-7 w-7 items-center justify-center rounded-full bg-black/55 text-white hover:bg-[color:var(--color-brick)]">
+                          <Trash2 size={13} />
+                        </button>
+                      </form>
+                    )}
                   </div>
                 </div>
               ))}

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { UploadCloud, Loader2 } from "lucide-react";
+import { UploadCloud, Loader2, TriangleAlert } from "lucide-react";
 import { uploadPropertyPhotos } from "./actions";
 
 // A <label> wrapping a visually-hidden file input, not a div+onClick+ref —
@@ -10,46 +10,56 @@ import { uploadPropertyPhotos } from "./actions";
 export function PropertyPhotoUploader({ propertyId }: { propertyId: string }) {
   const [pending, startTransition] = useTransition();
   const [dragOver, setDragOver] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   function upload(files: FileList) {
     if (files.length === 0) return;
+    setError(null);
     const fd = new FormData();
     for (const f of Array.from(files)) fd.append("files", f);
-    startTransition(() => {
-      uploadPropertyPhotos(propertyId, fd);
+    startTransition(async () => {
+      const result = await uploadPropertyPhotos(propertyId, fd);
+      if (!result.ok) setError(result.error ?? "Upload failed.");
     });
   }
 
   return (
-    <label
-      onDragOver={(e) => {
-        e.preventDefault();
-        setDragOver(true);
-      }}
-      onDragLeave={() => setDragOver(false)}
-      onDrop={(e) => {
-        e.preventDefault();
-        setDragOver(false);
-        upload(e.dataTransfer.files);
-      }}
-      className={`mb-4 flex cursor-pointer flex-col items-center justify-center gap-2 rounded border-2 border-dashed p-8 text-center transition-colors ${
-        dragOver ? "border-ir-gold bg-ir-gold/5" : "border-black/12 hover:border-black/25"
-      }`}
-    >
-      <input
-        type="file"
-        accept="image/*"
-        multiple
-        className="sr-only"
-        disabled={pending}
-        onChange={(e) => {
-          if (e.target.files) upload(e.target.files);
-          e.target.value = "";
+    <div className="mb-4">
+      <label
+        onDragOver={(e) => {
+          e.preventDefault();
+          setDragOver(true);
         }}
-      />
-      {pending ? <Loader2 size={20} className="animate-spin text-ir-gold-dark" /> : <UploadCloud size={20} className="text-black/30" />}
-      <div className="text-sm font-medium text-ir-navy">{pending ? "Uploading…" : "Drop photos here, or click to choose"}</div>
-      <div className="text-xs text-black/40">JPG, PNG or WEBP · multiple at once</div>
-    </label>
+        onDragLeave={() => setDragOver(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          setDragOver(false);
+          upload(e.dataTransfer.files);
+        }}
+        className={`flex cursor-pointer flex-col items-center justify-center gap-2 rounded border-2 border-dashed p-8 text-center transition-colors ${
+          dragOver ? "border-ir-gold bg-ir-gold/5" : "border-black/12 hover:border-black/25"
+        }`}
+      >
+        <input
+          type="file"
+          accept="image/*"
+          multiple
+          className="sr-only"
+          disabled={pending}
+          onChange={(e) => {
+            if (e.target.files) upload(e.target.files);
+            e.target.value = "";
+          }}
+        />
+        {pending ? <Loader2 size={20} className="animate-spin text-ir-gold-dark" /> : <UploadCloud size={20} className="text-black/30" />}
+        <div className="text-sm font-medium text-ir-navy">{pending ? "Uploading to Drive…" : "Drop photos here, or click to choose"}</div>
+        <div className="text-xs text-black/40">JPG, PNG or WEBP · multiple at once · saved to the company Google Drive</div>
+      </label>
+      {error && (
+        <div className="mt-2 flex items-center gap-1.5 text-xs text-[color:var(--color-brick)]">
+          <TriangleAlert size={12} className="shrink-0" /> {error}
+        </div>
+      )}
+    </div>
   );
 }

@@ -1,10 +1,10 @@
-import { CalendarClock, CloudDownload, CheckCircle2 } from "lucide-react";
+import { CalendarClock, CloudDownload, CheckCircle2, HardDrive } from "lucide-react";
 import { prisma } from "@/lib/prisma";
-import { requireUser } from "@/lib/auth";
+import { requireUser, isAdmin } from "@/lib/auth";
 import { PageHeader, SectionCard } from "@/components/ui";
 import { formatDateTime } from "@/lib/format";
 import { googleOAuthConfigured } from "@/lib/google";
-import { disconnectGoogle } from "./actions";
+import { disconnectGoogle, setStorageAccount } from "./actions";
 
 const ERROR_MESSAGES: Record<string, string> = {
   not_configured: "Google isn't configured on this deployment yet (missing GOOGLE_CLIENT_ID/SECRET).",
@@ -16,7 +16,13 @@ const ERROR_MESSAGES: Record<string, string> = {
 export default async function SettingsPage({ searchParams }: { searchParams: Promise<{ googleConnected?: string; googleError?: string }> }) {
   const user = await requireUser();
   const sp = await searchParams;
-  const account = await prisma.googleAccount.findUnique({ where: { userId: user.id } });
+  const admin = isAdmin(user);
+
+  const [account, allAccounts] = await Promise.all([
+    prisma.googleAccount.findUnique({ where: { userId: user.id } }),
+    admin ? prisma.googleAccount.findMany({ include: { user: true }, orderBy: { createdAt: "asc" } }) : Promise.resolve([]),
+  ]);
+  const storageAccount = admin ? allAccounts.find((a) => a.isStorageAccount) : await prisma.googleAccount.findFirst({ where: { isStorageAccount: true } });
 
   return (
     <div>
@@ -45,7 +51,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
               <div className="mt-1 text-xs text-black/40">Since {formatDateTime(account.createdAt)}</div>
               <ul className="mt-3 space-y-1 text-xs text-black/50">
                 <li className="flex items-center gap-1.5"><CalendarClock size={12} /> Your viewings and tasks push to your primary Google Calendar, and scheduling a viewing checks it for conflicts.</li>
-                <li className="flex items-center gap-1.5"><CloudDownload size={12} /> Photos and documents can be imported straight from Drive, from the property Media tab or the Document Vault.</li>
+                <li className="flex items-center gap-1.5"><CloudDownload size={12} /> You can browse and import your own Drive files — they&apos;re saved into the company&apos;s shared Property Media Drive below, not kept in your account.</li>
               </ul>
             </div>
             <form action={disconnectGoogle}>
@@ -55,13 +61,53 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
         ) : (
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div>
-              <p className="text-sm text-black/60">Connect your Google account to sync viewings and tasks to your calendar, and import photos or documents straight from Drive.</p>
+              <p className="text-sm text-black/60">Connect your Google account to sync viewings and tasks to your calendar, and browse Drive to import photos.</p>
               <p className="mt-1 text-xs text-black/40">You&apos;ll see Google&apos;s own consent screen next — this app only ever sees what you approve there.</p>
             </div>
             <a href="/api/google/connect" className="ir-btn ir-btn-gold shrink-0">Connect Google</a>
           </div>
         )}
       </SectionCard>
+
+      <div className="mt-6">
+        <SectionCard title="Property media storage">
+          <div className="mb-3 flex items-center gap-2 text-sm text-ir-navy">
+            <HardDrive size={15} className="text-black/40" />
+            {storageAccount ? (
+              <span>Every property photo is saved into <span className="font-medium">{storageAccount.email}</span>&apos;s Google Drive, in a folder per property. Anyone signed in can upload or view; only an admin can delete.</span>
+            ) : (
+              <span className="text-black/50">No storage account is set yet — property photo uploads won&apos;t work until an admin designates one below.</span>
+            )}
+          </div>
+
+          {admin && (
+            <div className="mt-4 border-t border-black/6 pt-4">
+              <div className="ir-label mb-2">Connected accounts</div>
+              {allAccounts.length === 0 ? (
+                <p className="text-xs text-black/40">No one has connected Google yet.</p>
+              ) : (
+                <ul className="space-y-1.5">
+                  {allAccounts.map((a) => (
+                    <li key={a.id} className="flex items-center justify-between gap-3 rounded border border-black/8 px-3 py-2">
+                      <div className="min-w-0">
+                        <div className="truncate text-sm text-ir-navy">{a.email}</div>
+                        <div className="text-[0.7rem] text-black/40">{a.user.name}</div>
+                      </div>
+                      {a.isStorageAccount ? (
+                        <span className="ir-badge shrink-0 border-ir-gold/40 bg-ir-gold/10 text-ir-gold-dark">Storage account</span>
+                      ) : (
+                        <form action={setStorageAccount.bind(null, a.userId)} className="shrink-0">
+                          <button type="submit" className="ir-btn ir-btn-ghost !py-1 !text-[0.7rem]">Use for storage</button>
+                        </form>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+        </SectionCard>
+      </div>
     </div>
   );
 }

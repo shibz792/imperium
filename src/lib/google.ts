@@ -11,7 +11,12 @@ import { prisma } from "@/lib/prisma";
 
 const SCOPES = [
   "https://www.googleapis.com/auth/calendar",
+  // .readonly to browse/import files already sitting in Drive; .file (on
+  // top of, not instead of) to create the property-media folders and
+  // upload/trash the files this app creates in them — least-privilege pair
+  // instead of the single broad "drive" scope that could touch anything.
   "https://www.googleapis.com/auth/drive.readonly",
+  "https://www.googleapis.com/auth/drive.file",
   "https://www.googleapis.com/auth/userinfo.email",
   "openid",
 ].join(" ");
@@ -292,4 +297,147 @@ export async function downloadDriveFile(userId: string, fileId: string): Promise
   if (!fileRes || !fileRes.ok) return null;
   const buffer = Buffer.from(await fileRes.arrayBuffer());
   return { buffer, mimeType: meta.mimeType, name: meta.name };
+}
+
+// ---------------------------------------------------------------------------
+// Storage account — the one connected Google account (of possibly several)
+// that property media actually lives in. Anyone signed into the CRM can
+// upload/view through it; only an admin can (re)designate which one it is.
+// ---------------------------------------------------------------------------
+
+export async function getStorageAccountUserId(): Promise<string | null> {
+  const account = await prisma.googleAccount.findFirst({ where: { isStorageAccount: true }, select: { userId: true } });
+  return account?.userId ?? null;
+}
+
+export async function designateStorageAccount(userId: string): Promise<void> {
+  await prisma.$transaction([
+    prisma.googleAccount.updateMany({ data: { isStorageAccount: false } }),
+    prisma.googleAccount.update({ where: { userId }, data: { isStorageAccount: true } }),
+  ]);
+}
+
+// ---------------------------------------------------------------------------
+// Drive — writing. Property media folders live under one root folder in the
+// storage account's Drive, findOrCreate'd by name rather than tracked by a
+// single fixed ID — resilient to the root folder being recreated if it's
+// ever deleted by hand in Drive itself.
+// ---------------------------------------------------------------------------
+
+const ROOT_FOLDER_NAME = "Imperium Realty — Property Media";
+const FOLDER_MIME = "application/vnd.google-apps.folder";
+
+async function findOrCreateFolder(userId: string, name: string, parentId?: string): Promise<string | null> {
+  const token = await getValidAccessToken(userId);
+  if (!token) return null;
+
+  const clauses = [`name = '${name.replace(/'/g, "\\'")}'`, `mimeType = '${FOLDER_MIME}'`, "trashed = false"];
+  clauses.push(parentId ? `'${parentId}' in parents` : "'root' in parents");
+  const searchRes = await safeFetch(`https://www.googleapis.com/drive/v3/files?${new URLSearchParams({ q: clauses.join(" and "), fields: "files(id)" })}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (searchRes?.ok) {
+    const found = (await searchRes.json()) as { files: { id: string }[] };
+    if (found.files[0]) return found.files[0].id;
+  }
+
+  const createRes = await safeFetch("https://www.googleapis.com/drive/v3/files?fields=id", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ name, mimeType: FOLDER_MIME, parents: parentId ? [parentId] : undefined }),
+  });
+  if (!createRes || !createRes.ok) return null;
+  const created = (await createRes.json()) as { id: string };
+  return created.id;
+}
+
+// Finds (or creates) this property's folder in the storage account's Drive,
+// caching the id on the Property row so this only does Drive round trips
+// once per property, not once per photo.
+export async function ensurePropertyDriveFolder(propertyId: string, propertyRef: string, title: string): Promise<string | null> {
+  const storageUserId = await getStorageAccountUserId();
+  if (!storageUserId) return null;
+
+  const property = await prisma.property.findUnique({ where: { id: propertyId }, select: { driveMediaFolderId: true } });
+  if (property?.driveMediaFolderId) return property.driveMediaFolderId;
+
+  const rootId = await findOrCreateFolder(storageUserId, ROOT_FOLDER_NAME);
+  if (!rootId) return null;
+  const folderId = await findOrCreateFolder(storageUserId, `${propertyRef} — ${title}`, rootId);
+  if (!folderId) return null;
+
+  await prisma.property.update({ where: { id: propertyId }, data: { driveMediaFolderId: folderId } });
+  return folderId;
+}
+
+async function makeFilePublic(userId: string, fileId: string): Promise<void> {
+  const token = await getValidAccessToken(userId);
+  if (!token) return;
+  await safeFetch(`https://www.googleapis.com/drive/v3/files/${fileId}/permissions`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ role: "reader", type: "anyone" }),
+  });
+}
+
+// Uploads bytes into a folder in the storage account's Drive, makes the
+// file link-viewable (property photos aren't confidential — the same shots
+// already go out over WhatsApp), and returns its file id. null on any
+// failure, including "no storage account configured yet".
+export async function uploadToPropertyFolder(folderId: string, buffer: Buffer, name: string, mimeType: string): Promise<string | null> {
+  const storageUserId = await getStorageAccountUserId();
+  if (!storageUserId) return null;
+  const token = await getValidAccessToken(storageUserId);
+  if (!token) return null;
+
+  const boundary = `imperium-${crypto.randomUUID()}`;
+  const metadata = JSON.stringify({ name, parents: [folderId] });
+  const body =
+    `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${metadata}\r\n` +
+    `--${boundary}\r\nContent-Type: ${mimeType}\r\n\r\n`;
+  const multipartBody = Buffer.concat([Buffer.from(body, "utf8"), buffer, Buffer.from(`\r\n--${boundary}--`, "utf8")]);
+
+  const res = await safeFetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": `multipart/related; boundary=${boundary}` },
+    body: multipartBody,
+  });
+  if (!res || !res.ok) return null;
+  const data = (await res.json()) as { id: string };
+  await makeFilePublic(storageUserId, data.id);
+  return data.id;
+}
+
+export async function trashDriveFile(fileId: string): Promise<boolean> {
+  const storageUserId = await getStorageAccountUserId();
+  if (!storageUserId) return false;
+  const token = await getValidAccessToken(storageUserId);
+  if (!token) return false;
+  const res = await safeFetch(`https://www.googleapis.com/drive/v3/files/${fileId}`, {
+    method: "PATCH",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ trashed: true }),
+  });
+  return Boolean(res?.ok);
+}
+
+// Streams a property photo's bytes through the storage account's token —
+// used by /api/drive-media/[fileId], the public-facing <img src> for every
+// property photo. Public Drive permission alone would work too, but a
+// documented, first-party endpoint we control beats depending on Drive's
+// hotlink behaviour not changing under us.
+export async function streamPropertyPhoto(fileId: string): Promise<{ buffer: Buffer; mimeType: string } | null> {
+  const storageUserId = await getStorageAccountUserId();
+  if (!storageUserId) return null;
+  const token = await getValidAccessToken(storageUserId);
+  if (!token) return null;
+
+  const [metaRes, fileRes] = await Promise.all([
+    safeFetch(`https://www.googleapis.com/drive/v3/files/${fileId}?fields=mimeType`, { headers: { Authorization: `Bearer ${token}` } }),
+    safeFetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, { headers: { Authorization: `Bearer ${token}` } }),
+  ]);
+  if (!metaRes?.ok || !fileRes?.ok) return null;
+  const meta = (await metaRes.json()) as { mimeType: string };
+  const buffer = Buffer.from(await fileRes.arrayBuffer());
+  return { buffer, mimeType: meta.mimeType };
 }
