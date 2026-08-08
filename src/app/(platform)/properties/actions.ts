@@ -8,6 +8,7 @@ import { nextPropertyRef, nextContactRef } from "@/lib/refs";
 import { writeAudit, logActivity } from "@/lib/audit";
 import { districtForCity } from "@/lib/locations";
 import { applyMarkup } from "@/lib/property";
+import { savePropertyPhoto, deletePropertyPhoto } from "@/lib/storage";
 
 function str(fd: FormData, key: string): string | undefined {
   const v = fd.get(key);
@@ -203,5 +204,66 @@ export async function changeListingStatus(id: string, status: string) {
   await logActivity({ entityType: "property", propertyId: id, type: "STATUS", message: `${user.name} changed listing status to ${status.replace("_", " ")}.`, userId: user.id });
   await writeAudit({ userId: user.id, action: "STATUS_CHANGE", entityType: "property", entityId: id, after: { status } });
   revalidatePath(`/properties/${id}`);
+  revalidatePath("/properties");
+}
+
+// ---------------------------------------------------------------------------
+// Media — photos, drone shots, floor plans. Uploaded straight into the
+// app's own storage (no external drive needed); the first photo a property
+// ever gets is automatically its cover, same principle as "the first note
+// you write doesn't need a category" — the common case should need zero
+// extra clicks.
+// ---------------------------------------------------------------------------
+
+export async function uploadPropertyPhotos(propertyId: string, formData: FormData) {
+  const user = await requireUser();
+  const files = formData.getAll("files").filter((f): f is File => f instanceof File && f.size > 0);
+  if (files.length === 0) return;
+
+  const existingCount = await prisma.propertyMedia.count({ where: { propertyId } });
+
+  for (const [i, file] of files.entries()) {
+    const { url } = await savePropertyPhoto(file);
+    await prisma.propertyMedia.create({
+      data: { propertyId, url, type: "PHOTO", isCover: existingCount === 0 && i === 0 },
+    });
+  }
+
+  await logActivity({
+    entityType: "property",
+    propertyId,
+    type: "MEDIA_UPLOADED",
+    message: `${user.name} added ${files.length} photo${files.length === 1 ? "" : "s"}.`,
+    userId: user.id,
+  });
+  revalidatePath(`/properties/${propertyId}`);
+  revalidatePath("/properties");
+}
+
+export async function setCoverPhoto(propertyId: string, mediaId: string) {
+  await requireUser();
+  await prisma.$transaction([
+    prisma.propertyMedia.updateMany({ where: { propertyId }, data: { isCover: false } }),
+    prisma.propertyMedia.update({ where: { id: mediaId }, data: { isCover: true } }),
+  ]);
+  revalidatePath(`/properties/${propertyId}`);
+  revalidatePath("/properties");
+}
+
+export async function deletePropertyMedia(propertyId: string, mediaId: string) {
+  await requireUser();
+  const media = await prisma.propertyMedia.findUnique({ where: { id: mediaId } });
+  if (!media || media.propertyId !== propertyId) return;
+
+  await prisma.propertyMedia.delete({ where: { id: mediaId } });
+  // Best-effort storage cleanup — shouldn't block the DB delete if it fails.
+  const storedName = media.url.split("/").pop();
+  if (storedName) await deletePropertyPhoto(storedName).catch(() => {});
+
+  if (media.isCover) {
+    const next = await prisma.propertyMedia.findFirst({ where: { propertyId }, orderBy: { createdAt: "asc" } });
+    if (next) await prisma.propertyMedia.update({ where: { id: next.id }, data: { isCover: true } });
+  }
+  revalidatePath(`/properties/${propertyId}`);
   revalidatePath("/properties");
 }

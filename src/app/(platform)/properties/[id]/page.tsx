@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Pencil, ShieldCheck, ExternalLink, Trash2 } from "lucide-react";
+import { Pencil, ShieldCheck, ExternalLink, Trash2, Star, CheckCircle2, Circle } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireUser, canSeeConfidential } from "@/lib/auth";
 import { Badge, Field, PageHeader, SectionCard, Tabs, EmptyState } from "@/components/ui";
@@ -10,8 +10,10 @@ import { LISTING_STATUS_TONE, LEGAL_STATUS_TONE, DEAL_STAGE_TONE, VIEWING_STATUS
 import { formatCurrency, formatDate, formatDateTime, titleCase, daysAgo } from "@/lib/format";
 import { completenessScore, isStale, primarySize, relevantAskingPrice, clientPrice, priceUnit, whatsAppMessage } from "@/lib/property";
 import { scoreMatch, explainMatch } from "@/lib/match";
-import { verifyProperty, changeListingStatus } from "../actions";
+import { verifyProperty, changeListingStatus, setCoverPhoto, deletePropertyMedia } from "../actions";
+import { PropertyPhotoUploader } from "../PropertyPhotoUploader";
 import { createNote, deleteNote } from "../../notes/actions";
+import { createTask, setTaskStatus, deleteTask } from "../../tasks/actions";
 
 const CAN_DELETE_ANY_NOTE = ["SUPER_ADMIN", "DIRECTOR", "SALES_MANAGER"];
 
@@ -25,6 +27,7 @@ const TABS = [
   { key: "viewings", label: "Viewings" },
   { key: "offers", label: "Offers" },
   { key: "marketing", label: "Marketing" },
+  { key: "tasks", label: "Tasks" },
   { key: "notes", label: "Notes" },
   { key: "activity", label: "Activity" },
 ];
@@ -41,7 +44,7 @@ export default async function PropertyDetailPage({ params, searchParams }: { par
       owner: true,
       assignedAgent: true,
       collaborators: true,
-      media: true,
+      media: { orderBy: [{ isCover: "desc" }, { createdAt: "asc" }] },
       documents: true,
       marketingAssets: { include: { approvedBy: true }, orderBy: { createdAt: "desc" } },
       sharePages: true,
@@ -52,6 +55,15 @@ export default async function PropertyDetailPage({ params, searchParams }: { par
     },
   });
   if (!property) notFound();
+
+  const [tasks, activeUsers] = await Promise.all([
+    prisma.task.findMany({
+      where: { relatedEntityType: "property", relatedEntityId: id },
+      include: { assignedTo: true },
+      orderBy: { dueAt: "asc" },
+    }),
+    prisma.user.findMany({ where: { active: true }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
+  ]);
 
   const completeness = completenessScore(property);
   const stale = isStale(property);
@@ -224,13 +236,35 @@ export default async function PropertyDetailPage({ params, searchParams }: { par
 
       {tab === "media" && (
         <SectionCard title={`Media (${property.media.length})`}>
+          <PropertyPhotoUploader propertyId={id} />
           {property.media.length === 0 ? (
-            <EmptyState title="No media uploaded yet" description="Add hero images, galleries, drone footage or floor plans from the Document Vault." />
+            <EmptyState title="No photos yet" description="Drop a few in above — the first one becomes the cover photo shown on cards and listings automatically." />
           ) : (
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
               {property.media.map((m) => (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img key={m.id} src={m.url} alt={m.caption ?? ""} className="aspect-video w-full rounded border border-black/8 bg-ir-ivory object-contain p-6" />
+                <div key={m.id} className="group relative">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={m.url} alt={m.caption ?? ""} className="aspect-video w-full rounded border border-black/8 bg-ir-ivory object-cover" />
+                  {m.isCover && (
+                    <span className="absolute left-2 top-2 flex items-center gap-1 rounded-full bg-ir-gold px-2 py-0.5 text-[0.65rem] font-semibold text-ir-navy">
+                      <Star size={10} className="fill-current" /> Cover
+                    </span>
+                  )}
+                  <div className="absolute inset-x-2 bottom-2 flex items-center justify-end gap-1.5 opacity-0 transition-opacity group-hover:opacity-100">
+                    {!m.isCover && (
+                      <form action={setCoverPhoto.bind(null, id, m.id)}>
+                        <button type="submit" title="Set as cover photo" className="flex h-7 w-7 items-center justify-center rounded-full bg-black/55 text-white hover:bg-black/75">
+                          <Star size={13} />
+                        </button>
+                      </form>
+                    )}
+                    <form action={deletePropertyMedia.bind(null, id, m.id)}>
+                      <button type="submit" title="Delete photo" className="flex h-7 w-7 items-center justify-center rounded-full bg-black/55 text-white hover:bg-[color:var(--color-brick)]">
+                        <Trash2 size={13} />
+                      </button>
+                    </form>
+                  </div>
+                </div>
               ))}
             </div>
           )}
@@ -430,6 +464,63 @@ export default async function PropertyDetailPage({ params, searchParams }: { par
                 </div>
               ))}
             </div>
+          )}
+        </SectionCard>
+      )}
+
+      {tab === "tasks" && (
+        <SectionCard title="Tasks">
+          <form action={createTask} className="mb-4 flex flex-wrap items-end gap-2.5">
+            <input type="hidden" name="link" value={`property:${id}`} />
+            <div className="min-w-[200px] flex-1">
+              <label className="ir-label mb-1 block">Task</label>
+              <input name="title" required placeholder="Call the owner about…" className="ir-input" />
+            </div>
+            <div>
+              <label className="ir-label mb-1 block">Due</label>
+              <input name="dueAt" type="datetime-local" required className="ir-input" />
+            </div>
+            <div>
+              <label className="ir-label mb-1 block">Assign to</label>
+              <select name="assignedToId" defaultValue={user.id} className="ir-select">
+                <option value="">Unassigned</option>
+                {activeUsers.map((u) => (
+                  <option key={u.id} value={u.id}>{u.name}{u.id === user.id ? " (you)" : ""}</option>
+                ))}
+              </select>
+            </div>
+            <button type="submit" className="ir-btn ir-btn-primary">Add task</button>
+          </form>
+          {tasks.length === 0 ? (
+            <EmptyState title="No tasks on this property yet" />
+          ) : (
+            <ul className="divide-y divide-black/6">
+              {tasks.map((t) => {
+                const overdue = t.status !== "DONE" && t.dueAt < new Date();
+                const done = t.status === "DONE";
+                return (
+                  <li key={t.id} className="flex items-center gap-3 py-2.5">
+                    <form action={setTaskStatus.bind(null, t.id, done ? "OPEN" : "DONE")}>
+                      <button type="submit" title={done ? "Mark open" : "Mark done"} className={done ? "text-[color:var(--color-forest)]" : "text-black/25 hover:text-ir-gold-dark"}>
+                        {done ? <CheckCircle2 size={17} /> : <Circle size={17} />}
+                      </button>
+                    </form>
+                    <div className="min-w-0 flex-1">
+                      <div className={`text-sm ${done ? "text-black/40 line-through" : "text-ir-navy"}`}>{t.title}</div>
+                      <div className="mt-0.5 text-[0.7rem] text-black/40">
+                        <span className={overdue ? "font-medium text-[color:var(--color-brick)]" : ""}>{overdue ? "Overdue" : "Due"} {formatDateTime(t.dueAt)}</span>
+                        {t.assignedTo && <> · {t.assignedTo.name}</>}
+                      </div>
+                    </div>
+                    <form action={deleteTask.bind(null, t.id)}>
+                      <button type="submit" title="Delete task" className="text-black/25 hover:text-[color:var(--color-brick)]">
+                        <Trash2 size={13} />
+                      </button>
+                    </form>
+                  </li>
+                );
+              })}
+            </ul>
           )}
         </SectionCard>
       )}

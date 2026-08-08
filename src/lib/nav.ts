@@ -20,6 +20,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/contacts", label: "Contacts & CRM", icon: "Users" },
   { href: "/deals", label: "Deals Pipeline", icon: "Kanban" },
   { href: "/viewings", label: "Viewings", icon: "CalendarClock" },
+  { href: "/tasks", label: "Tasks", icon: "ListTodo" },
   { href: "/notes", label: "Notes", icon: "StickyNote" },
   { href: "/marketing-studio", label: "Marketing Studio", icon: "Megaphone", roles: ["SUPER_ADMIN", "DIRECTOR", "SALES_MANAGER", "MARKETING", "AGENT"] },
   { href: "/documents", label: "Document Vault", icon: "FolderLock", roles: ["SUPER_ADMIN", "DIRECTOR", "SALES_MANAGER", "AGENT", "LEGAL", "FINANCE"] },

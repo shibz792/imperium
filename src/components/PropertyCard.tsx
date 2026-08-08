@@ -33,15 +33,21 @@ function panelTone(seed: string) {
 // real <button>, and nesting any interactive element inside an <a> is
 // invalid HTML that breaks hydration (found and fixed the same bug once
 // already this session, on the Agents page's broker cards).
-export function PropertyCard({ property }: { property: Property & { assignedAgent?: { name: string } | null } }) {
+export function PropertyCard({ property }: { property: Property & { assignedAgent?: { name: string } | null; media?: { url: string }[] } }) {
   const completeness = completenessScore(property);
   const stale = isStale(property);
   const Icon = CATEGORY_ICON[property.category];
+  const cover = property.media?.[0]?.url;
 
   return (
     <ClickableCard href={`/properties/${property.id}`} className="ir-card ir-card-hover group flex flex-col overflow-hidden">
-      <div className={`relative flex h-36 items-center justify-center ${panelTone(property.id)}`}>
-        <Icon size={34} strokeWidth={1} className="text-white/15" />
+      <div className={`relative flex h-36 items-center justify-center ${cover ? "bg-ir-navy" : panelTone(property.id)}`}>
+        {cover ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={cover} alt="" className="absolute inset-0 h-full w-full object-cover" />
+        ) : (
+          <Icon size={34} strokeWidth={1} className="text-white/15" />
+        )}
         <div className="absolute left-3 top-3 flex gap-1.5">
           <Badge tone={(LISTING_STATUS_TONE[property.listingStatus] as never) ?? "gray"}>{titleCase(property.listingStatus)}</Badge>
           {stale && <Badge tone="red">Stale</Badge>}
@@ -51,6 +57,7 @@ export function PropertyCard({ property }: { property: Property & { assignedAgen
             <Badge tone="gold">Exclusive</Badge>
           </div>
         )}
+        {cover && <div className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/55 to-transparent" />}
         <div className="absolute bottom-3 left-3 right-3 flex items-end justify-between">
           <span className="text-[0.65rem] uppercase tracking-wide text-white/50">{property.propertyRef}</span>
           <span className="text-[0.65rem] uppercase tracking-wide text-white/50">{primarySize(property) ?? ""}</span>

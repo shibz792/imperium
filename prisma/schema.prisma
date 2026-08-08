@@ -60,6 +60,7 @@ model User {
   collaboratingDeals        Deal[]        @relation("DealCollaborators")
   viewingsAsAgent      Viewing[]        @relation("ViewingAgent")
   tasks                Task[]           @relation("TaskAssignee")
+  tasksCreated         Task[]           @relation("TaskCreator")
   auditLogs            AuditLog[]
   activities           Activity[]
   aiIntakeJobs         AiIntakeJob[]
@@ -312,6 +313,10 @@ model PropertyMedia {
   type       MediaType
   branded    Boolean   @default(false)
   caption    String?
+  // The one photo shown on cards and list rows — at most one true per
+  // property, enforced in the setCoverPhoto action (unset the rest, then
+  // set this one) rather than in the schema.
+  isCover    Boolean   @default(false)
   createdAt  DateTime  @default(now())
 
   @@index([propertyId])
@@ -733,16 +738,22 @@ model Task {
   type              TaskType
   title             String
   dueAt             DateTime
+  // Same loose polymorphic pointer as Activity — "property" | "requirement"
+  // | null (a general task with no linked record). CUSTOM-type tasks
+  // created directly by a user, same spirit as Note.
   relatedEntityType String?
   relatedEntityId   String?
   assignedToId      String?
   assignedTo        User?      @relation("TaskAssignee", fields: [assignedToId], references: [id])
+  createdById       String?
+  createdBy         User?      @relation("TaskCreator", fields: [createdById], references: [id])
   status            TaskStatus @default(OPEN)
   createdAt         DateTime   @default(now())
 
   @@index([assignedToId])
   @@index([status])
   @@index([dueAt])
+  @@index([relatedEntityType, relatedEntityId])
 }
 
 model Activity {

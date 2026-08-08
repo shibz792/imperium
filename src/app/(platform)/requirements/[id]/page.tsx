@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Pencil, RefreshCcw } from "lucide-react";
+import { Pencil, RefreshCcw, Trash2, CheckCircle2, Circle } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireUser, canSeeConfidential } from "@/lib/auth";
 import { Badge, Field, PageHeader, SectionCard, Tabs, EmptyState } from "@/components/ui";
@@ -11,11 +11,13 @@ import { REQUIREMENT_STATUS_TONE, URGENCY_TONE, DEAL_STAGE_TONE } from "@/lib/ba
 import { formatCurrency, formatDate, formatDateTime, titleCase, daysAgo } from "@/lib/format";
 import { scoreMatch, explainMatch } from "@/lib/match";
 import { reconfirmRequirement, changeRequirementStatus } from "../actions";
+import { createTask, setTaskStatus, deleteTask } from "../../tasks/actions";
 
 const TABS = [
   { key: "overview", label: "Overview" },
   { key: "matches", label: "Matches" },
   { key: "deals", label: "Deals" },
+  { key: "tasks", label: "Tasks" },
   { key: "activity", label: "Activity" },
 ];
 
@@ -36,6 +38,15 @@ export default async function RequirementDetailPage({ params, searchParams }: { 
     },
   });
   if (!requirement) notFound();
+
+  const [tasks, activeUsers] = await Promise.all([
+    prisma.task.findMany({
+      where: { relatedEntityType: "requirement", relatedEntityId: id },
+      include: { assignedTo: true },
+      orderBy: { dueAt: "asc" },
+    }),
+    prisma.user.findMany({ where: { active: true }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
+  ]);
 
   const locations = Array.isArray(requirement.preferredLocationsJson) ? (requirement.preferredLocationsJson as string[]) : [];
   const surrounding = Array.isArray(requirement.acceptableSurroundingJson) ? (requirement.acceptableSurroundingJson as string[]) : [];
@@ -229,6 +240,63 @@ export default async function RequirementDetailPage({ params, searchParams }: { 
                   <Badge tone={(DEAL_STAGE_TONE[d.stage] as never) ?? "gray"}>{titleCase(d.stage)}</Badge>
                 </li>
               ))}
+            </ul>
+          )}
+        </SectionCard>
+      )}
+
+      {tab === "tasks" && (
+        <SectionCard title="Tasks">
+          <form action={createTask} className="mb-4 flex flex-wrap items-end gap-2.5">
+            <input type="hidden" name="link" value={`requirement:${id}`} />
+            <div className="min-w-[200px] flex-1">
+              <label className="ir-label mb-1 block">Task</label>
+              <input name="title" required placeholder="Follow up on financing…" className="ir-input" />
+            </div>
+            <div>
+              <label className="ir-label mb-1 block">Due</label>
+              <input name="dueAt" type="datetime-local" required className="ir-input" />
+            </div>
+            <div>
+              <label className="ir-label mb-1 block">Assign to</label>
+              <select name="assignedToId" defaultValue={user.id} className="ir-select">
+                <option value="">Unassigned</option>
+                {activeUsers.map((u) => (
+                  <option key={u.id} value={u.id}>{u.name}{u.id === user.id ? " (you)" : ""}</option>
+                ))}
+              </select>
+            </div>
+            <button type="submit" className="ir-btn ir-btn-primary">Add task</button>
+          </form>
+          {tasks.length === 0 ? (
+            <EmptyState title="No tasks on this requirement yet" />
+          ) : (
+            <ul className="divide-y divide-black/6">
+              {tasks.map((t) => {
+                const overdue = t.status !== "DONE" && t.dueAt < new Date();
+                const done = t.status === "DONE";
+                return (
+                  <li key={t.id} className="flex items-center gap-3 py-2.5">
+                    <form action={setTaskStatus.bind(null, t.id, done ? "OPEN" : "DONE")}>
+                      <button type="submit" title={done ? "Mark open" : "Mark done"} className={done ? "text-[color:var(--color-forest)]" : "text-black/25 hover:text-ir-gold-dark"}>
+                        {done ? <CheckCircle2 size={17} /> : <Circle size={17} />}
+                      </button>
+                    </form>
+                    <div className="min-w-0 flex-1">
+                      <div className={`text-sm ${done ? "text-black/40 line-through" : "text-ir-navy"}`}>{t.title}</div>
+                      <div className="mt-0.5 text-[0.7rem] text-black/40">
+                        <span className={overdue ? "font-medium text-[color:var(--color-brick)]" : ""}>{overdue ? "Overdue" : "Due"} {formatDateTime(t.dueAt)}</span>
+                        {t.assignedTo && <> · {t.assignedTo.name}</>}
+                      </div>
+                    </div>
+                    <form action={deleteTask.bind(null, t.id)}>
+                      <button type="submit" title="Delete task" className="text-black/25 hover:text-[color:var(--color-brick)]">
+                        <Trash2 size={13} />
+                      </button>
+                    </form>
+                  </li>
+                );
+              })}
             </ul>
           )}
         </SectionCard>

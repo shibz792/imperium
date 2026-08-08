@@ -37,7 +37,7 @@ export default async function PropertiesPage({ searchParams }: { searchParams: P
   const [properties, total] = await Promise.all([
     prisma.property.findMany({
       where,
-      include: { assignedAgent: true, owner: true },
+      include: { assignedAgent: true, owner: true, media: { where: { isCover: true }, take: 1 } },
       orderBy: { createdAt: "desc" },
       skip,
       take,
@@ -163,11 +163,21 @@ export default async function PropertiesPage({ searchParams }: { searchParams: P
                 return (
                   <ClickableRow key={p.id} href={`/properties/${p.id}`} className="border-b border-black/6 last:border-0 hover:bg-black/[0.015]">
                     <td className="px-4 py-3">
-                      <Link href={`/properties/${p.id}`} className="font-medium text-ir-navy hover:text-ir-gold-dark">
-                        {p.title}
-                      </Link>
-                      <div className="mt-0.5 text-[0.7rem] text-black/40">
-                        {p.propertyRef} · {primarySize(p) ?? "size tbc"}
+                      <div className="flex items-center gap-2.5">
+                        {p.media[0] ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={p.media[0].url} alt="" className="h-9 w-12 shrink-0 rounded object-cover" />
+                        ) : (
+                          <div className="h-9 w-12 shrink-0 rounded bg-ir-navy/90" />
+                        )}
+                        <div>
+                          <Link href={`/properties/${p.id}`} className="font-medium text-ir-navy hover:text-ir-gold-dark">
+                            {p.title}
+                          </Link>
+                          <div className="mt-0.5 text-[0.7rem] text-black/40">
+                            {p.propertyRef} · {primarySize(p) ?? "size tbc"}
+                          </div>
+                        </div>
                       </div>
                     </td>
                     <td className="px-4 py-3 text-black/70">
