@@ -10,8 +10,9 @@ import { LISTING_STATUS_TONE, LEGAL_STATUS_TONE, DEAL_STAGE_TONE, VIEWING_STATUS
 import { formatCurrency, formatDate, formatDateTime, titleCase, daysAgo } from "@/lib/format";
 import { completenessScore, isStale, primarySize, relevantAskingPrice, clientPrice, priceUnit, whatsAppMessage } from "@/lib/property";
 import { scoreMatch, explainMatch } from "@/lib/match";
-import { verifyProperty, changeListingStatus, setCoverPhoto, deletePropertyMedia } from "../actions";
+import { verifyProperty, changeListingStatus, setCoverPhoto, deletePropertyMedia, importPhotosFromDrive } from "../actions";
 import { PropertyPhotoUploader } from "../PropertyPhotoUploader";
+import { GoogleDriveBrowser } from "@/components/GoogleDriveBrowser";
 import { createNote, deleteNote } from "../../notes/actions";
 import { createTask, setTaskStatus, deleteTask } from "../../tasks/actions";
 
@@ -237,6 +238,9 @@ export default async function PropertyDetailPage({ params, searchParams }: { par
       {tab === "media" && (
         <SectionCard title={`Media (${property.media.length})`}>
           <PropertyPhotoUploader propertyId={id} />
+          <div className="-mt-2 mb-4 flex justify-end">
+            <GoogleDriveBrowser filter="image" label="Import photos from Drive" onImport={importPhotosFromDrive.bind(null, id)} />
+          </div>
           {property.media.length === 0 ? (
             <EmptyState title="No photos yet" description="Drop a few in above — the first one becomes the cover photo shown on cards and listings automatically." />
           ) : (

@@ -5,6 +5,9 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
 import { logActivity } from "@/lib/audit";
+import { createCalendarEvent, deleteCalendarEvent, freeBusy } from "@/lib/google";
+
+const VIEWING_DURATION_MS = 45 * 60_000;
 
 function str(fd: FormData, key: string): string | undefined {
   const v = fd.get(key);
@@ -16,27 +19,46 @@ export async function scheduleViewing(formData: FormData) {
   const propertyId = str(formData, "propertyId")!;
   const contactId = str(formData, "contactId")!;
   const scheduledAt = new Date(String(formData.get("scheduledAt")));
+  const agentId = str(formData, "agentId") ?? user.id;
+  const windowEnd = new Date(scheduledAt.getTime() + VIEWING_DURATION_MS);
 
-  await prisma.viewing.create({
-    data: {
-      propertyId,
-      contactId,
-      dealId: str(formData, "dealId"),
-      agentId: str(formData, "agentId") ?? user.id,
-      scheduledAt,
-      status: "SCHEDULED",
-    },
+  // Checked before creating so a conflict can be surfaced without blocking
+  // the booking — the agent may want it anyway (double-booked viewings
+  // happen; the CRM shouldn't be the thing that refuses to let you).
+  const busy = await freeBusy(agentId, scheduledAt, windowEnd);
+  const conflict = Boolean(busy?.some((b) => new Date(b.start) < windowEnd && new Date(b.end) > scheduledAt));
+
+  const [property, contact] = await Promise.all([
+    prisma.property.findUnique({ where: { id: propertyId }, select: { title: true, address: true, city: true } }),
+    prisma.contact.findUnique({ where: { id: contactId }, select: { name: true, phone: true } }),
+  ]);
+
+  const viewing = await prisma.viewing.create({
+    data: { propertyId, contactId, dealId: str(formData, "dealId"), agentId, scheduledAt, status: "SCHEDULED" },
   });
+
+  const googleEventId = await createCalendarEvent(agentId, {
+    title: `Viewing: ${property?.title ?? "Property"}`,
+    description: `With ${contact?.name ?? "contact"}${contact?.phone ? ` (${contact.phone})` : ""}.`,
+    location: [property?.address, property?.city].filter(Boolean).join(", ") || undefined,
+    start: scheduledAt,
+    end: windowEnd,
+  });
+  if (googleEventId) await prisma.viewing.update({ where: { id: viewing.id }, data: { googleEventId } });
 
   await logActivity({ entityType: "property", propertyId, type: "VIEWING_SCHEDULED", message: `${user.name} scheduled a viewing.`, userId: user.id });
   revalidatePath("/viewings");
   revalidatePath("/command-centre");
-  redirect("/viewings");
+  redirect(`/viewings${conflict ? "?conflict=1" : ""}`);
 }
 
 export async function updateViewingStatus(id: string, status: string) {
   const user = await requireUser();
   const viewing = await prisma.viewing.update({ where: { id }, data: { status: status as never } });
+  if (status === "CANCELLED" && viewing.googleEventId && viewing.agentId) {
+    await deleteCalendarEvent(viewing.agentId, viewing.googleEventId);
+    await prisma.viewing.update({ where: { id }, data: { googleEventId: null } });
+  }
   await logActivity({ entityType: "property", propertyId: viewing.propertyId, type: "VIEWING_STATUS", message: `${user.name} marked a viewing as ${status.toLowerCase().replace("_", " ")}.`, userId: user.id });
   revalidatePath("/viewings");
 }

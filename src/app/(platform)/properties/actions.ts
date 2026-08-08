@@ -8,7 +8,8 @@ import { nextPropertyRef, nextContactRef } from "@/lib/refs";
 import { writeAudit, logActivity } from "@/lib/audit";
 import { districtForCity } from "@/lib/locations";
 import { applyMarkup } from "@/lib/property";
-import { savePropertyPhoto, deletePropertyPhoto } from "@/lib/storage";
+import { savePropertyPhoto, deletePropertyPhoto, savePhotoBuffer } from "@/lib/storage";
+import { downloadDriveFile } from "@/lib/google";
 
 function str(fd: FormData, key: string): string | undefined {
   const v = fd.get(key);
@@ -263,6 +264,29 @@ export async function deletePropertyMedia(propertyId: string, mediaId: string) {
   if (media.isCover) {
     const next = await prisma.propertyMedia.findFirst({ where: { propertyId }, orderBy: { createdAt: "asc" } });
     if (next) await prisma.propertyMedia.update({ where: { id: next.id }, data: { isCover: true } });
+  }
+  revalidatePath(`/properties/${propertyId}`);
+  revalidatePath("/properties");
+}
+
+export async function importPhotosFromDrive(propertyId: string, fileIds: string[]) {
+  const user = await requireUser();
+  if (fileIds.length === 0) return;
+
+  const existingCount = await prisma.propertyMedia.count({ where: { propertyId } });
+  let imported = 0;
+  for (const fileId of fileIds) {
+    const file = await downloadDriveFile(user.id, fileId);
+    if (!file || !file.mimeType.startsWith("image/")) continue; // skip anything that isn't a photo, silently
+    const { url } = await savePhotoBuffer(file.buffer, file.name, file.mimeType);
+    await prisma.propertyMedia.create({
+      data: { propertyId, url, type: "PHOTO", isCover: existingCount === 0 && imported === 0 },
+    });
+    imported++;
+  }
+
+  if (imported > 0) {
+    await logActivity({ entityType: "property", propertyId, type: "MEDIA_UPLOADED", message: `${user.name} imported ${imported} photo${imported === 1 ? "" : "s"} from Google Drive.`, userId: user.id });
   }
   revalidatePath(`/properties/${propertyId}`);
   revalidatePath("/properties");

@@ -1,12 +1,13 @@
 import Link from "next/link";
-import { Plus } from "lucide-react";
+import { Plus, TriangleAlert } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { PageHeader, Badge, EmptyState } from "@/components/ui";
 import { VIEWING_STATUS_TONE } from "@/lib/badges";
 import { formatDateTime, titleCase } from "@/lib/format";
 import { updateViewingStatus, submitFeedback } from "./actions";
 
-export default async function ViewingsPage() {
+export default async function ViewingsPage({ searchParams }: { searchParams: Promise<{ conflict?: string }> }) {
+  const sp = await searchParams;
   const viewings = await prisma.viewing.findMany({
     include: { property: true, contact: true, agent: true },
     orderBy: { scheduledAt: "desc" },
@@ -23,6 +24,12 @@ export default async function ViewingsPage() {
         description="Schedule inspections, assign agents and capture feedback."
         actions={<Link href="/viewings/new" className="ir-btn ir-btn-primary"><Plus size={15} /> Schedule viewing</Link>}
       />
+
+      {sp.conflict === "1" && (
+        <div className="mb-5 flex items-center gap-2 rounded border border-[#92601f4d] bg-[color:var(--color-bronze-tint)] px-4 py-2.5 text-sm text-[color:var(--color-bronze)]">
+          <TriangleAlert size={15} className="shrink-0" /> Booked, but the assigned agent&rsquo;s Google Calendar shows something else at that time — worth a double-check.
+        </div>
+      )}
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
         <section>

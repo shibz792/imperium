@@ -22,6 +22,7 @@ import {
   Search,
   StickyNote,
   ListTodo,
+  Settings,
   ChevronsLeft,
   ChevronsRight,
   X,
@@ -52,6 +53,7 @@ const ICONS: Record<string, LucideIcon> = {
   Search,
   StickyNote,
   ListTodo,
+  Settings,
 };
 
 export function Sidebar({ items, user }: { items: NavItem[]; user: CurrentUser }) {

@@ -2,7 +2,8 @@ import { prisma } from "@/lib/prisma";
 import { canSeeConfidential, requireUser } from "@/lib/auth";
 import { PageHeader, Badge, EmptyState } from "@/components/ui";
 import { formatDate, titleCase } from "@/lib/format";
-import { uploadDocument } from "./actions";
+import { uploadDocument, importDocumentsFromDrive } from "./actions";
+import { GoogleDriveBrowser } from "@/components/GoogleDriveBrowser";
 import { Lock, Download } from "lucide-react";
 
 const CATEGORIES = ["DEED", "SURVEY_PLAN", "COC", "APPROVED_PLAN", "MUNICIPAL", "TAX", "AGREEMENT", "IDENTIFICATION", "OTHER"];
@@ -23,6 +24,7 @@ export default async function DocumentsPage() {
         eyebrow={`Document Vault · ${documents.length}`}
         title="Deeds, plans, approvals, agreements & IDs"
         description="Downloads are gated by role. Confidential documents require a confidential-access role and every download is logged to the audit trail."
+        actions={<GoogleDriveBrowser onImport={importDocumentsFromDrive} />}
       />
 
       <form action={uploadDocument} className="ir-card mb-6 grid grid-cols-1 gap-3 p-5 sm:grid-cols-2 lg:grid-cols-6">

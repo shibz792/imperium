@@ -22,13 +22,18 @@ function sanitize(name: string) {
 }
 
 export async function saveUploadedFile(file: File): Promise<{ storedName: string; originalName: string; size: number }> {
-  const storedName = `${crypto.randomUUID()}-${sanitize(file.name)}`;
-  const buffer = Buffer.from(await file.arrayBuffer());
+  return saveDocumentBuffer(Buffer.from(await file.arrayBuffer()), file.name, file.type);
+}
+
+// Same as saveUploadedFile, but from bytes already in hand (a Drive import)
+// rather than a browser File — the two upload sources share this bottom half.
+export async function saveDocumentBuffer(buffer: Buffer, originalName: string, contentType?: string): Promise<{ storedName: string; originalName: string; size: number }> {
+  const storedName = `${crypto.randomUUID()}-${sanitize(originalName)}`;
   const { error } = await client()
     .storage.from(BUCKET)
-    .upload(storedName, buffer, { contentType: file.type || "application/octet-stream", upsert: false });
+    .upload(storedName, buffer, { contentType: contentType || "application/octet-stream", upsert: false });
   if (error) throw new Error(`Upload failed: ${error.message}`);
-  return { storedName, originalName: file.name, size: buffer.byteLength };
+  return { storedName, originalName, size: buffer.byteLength };
 }
 
 export async function readStoredFile(storedName: string): Promise<Buffer> {
@@ -48,11 +53,14 @@ export async function readStoredFile(storedName: string): Promise<Buffer> {
 const PHOTO_BUCKET = "property-photos";
 
 export async function savePropertyPhoto(file: File): Promise<{ url: string; storedName: string }> {
-  const storedName = `${crypto.randomUUID()}-${sanitize(file.name)}`;
-  const buffer = Buffer.from(await file.arrayBuffer());
+  return savePhotoBuffer(Buffer.from(await file.arrayBuffer()), file.name, file.type);
+}
+
+export async function savePhotoBuffer(buffer: Buffer, originalName: string, contentType?: string): Promise<{ url: string; storedName: string }> {
+  const storedName = `${crypto.randomUUID()}-${sanitize(originalName)}`;
   const { error } = await client()
     .storage.from(PHOTO_BUCKET)
-    .upload(storedName, buffer, { contentType: file.type || "image/jpeg", upsert: false });
+    .upload(storedName, buffer, { contentType: contentType || "image/jpeg", upsert: false });
   if (error) throw new Error(`Photo upload failed: ${error.message}`);
   const { data } = client().storage.from(PHOTO_BUCKET).getPublicUrl(storedName);
   return { url: data.publicUrl, storedName };

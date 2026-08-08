@@ -67,6 +67,27 @@ model User {
   documentsUploaded    Document[]
   marketingApproved    MarketingAsset[] @relation("MarketingApprover")
   notes                Note[]
+  googleAccount        GoogleAccount?
+}
+
+// One connected Google account per user — Calendar (two-way: viewings/tasks
+// push out as events, freebusy checked before double-booking an agent) and
+// Drive (browse + import existing files into a property's media/documents).
+// Tokens are server-side only, never sent to the browser. refreshToken is
+// only returned by Google on the very first consent (access_type=offline,
+// prompt=consent) — the connect flow forces that every time so reconnecting
+// after a revoke still gets one.
+model GoogleAccount {
+  id           String   @id @default(cuid())
+  userId       String   @unique
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  email        String
+  accessToken  String
+  refreshToken String
+  expiresAt    DateTime
+  scope        String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 }
 
 // ---------------------------------------------------------------------------
@@ -516,6 +537,9 @@ model Viewing {
   status         ViewingStatus @default(SCHEDULED)
   feedbackRating Int?
   feedbackNotes  String?
+  // Set once this viewing is pushed to the agent's Google Calendar — lets
+  // later edits update the same event instead of creating a duplicate.
+  googleEventId  String?
   createdAt      DateTime      @default(now())
 
   @@index([propertyId])
@@ -748,6 +772,7 @@ model Task {
   createdById       String?
   createdBy         User?      @relation("TaskCreator", fields: [createdById], references: [id])
   status            TaskStatus @default(OPEN)
+  googleEventId     String?
   createdAt         DateTime   @default(now())
 
   @@index([assignedToId])

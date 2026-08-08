@@ -3,7 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
-import { saveUploadedFile } from "@/lib/storage";
+import { saveUploadedFile, saveDocumentBuffer } from "@/lib/storage";
+import { downloadDriveFile } from "@/lib/google";
 import { writeAudit, logActivity } from "@/lib/audit";
 
 function str(fd: FormData, key: string): string | undefined {
@@ -37,4 +38,18 @@ export async function uploadDocument(formData: FormData) {
 
   revalidatePath("/documents");
   if (propertyId) revalidatePath(`/properties/${propertyId}`);
+}
+
+export async function importDocumentsFromDrive(fileIds: string[]) {
+  const user = await requireUser();
+  for (const fileId of fileIds) {
+    const file = await downloadDriveFile(user.id, fileId);
+    if (!file) continue; // Google-native (Docs/Sheets/Slides) or download failed — skip, not fatal
+    const { storedName } = await saveDocumentBuffer(file.buffer, file.name, file.mimeType);
+    const doc = await prisma.document.create({
+      data: { name: file.name, category: "OTHER", fileUrl: storedName, confidential: false, uploadedById: user.id },
+    });
+    await writeAudit({ userId: user.id, action: "UPLOAD", entityType: "document", entityId: doc.id });
+  }
+  revalidatePath("/documents");
 }

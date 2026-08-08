@@ -27,6 +27,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/commissions", label: "Commission Centre", icon: "Wallet", roles: ["SUPER_ADMIN", "DIRECTOR", "SALES_MANAGER", "FINANCE"] },
   { href: "/analytics", label: "Analytics", icon: "BarChart3", roles: ["SUPER_ADMIN", "DIRECTOR", "SALES_MANAGER", "FINANCE", "MARKETING"] },
   { href: "/admin", label: "Administration", icon: "ShieldCheck", roles: ["SUPER_ADMIN"] },
+  { href: "/settings", label: "Settings", icon: "Settings" },
 ];
 
 export function navForRole(role: Role): NavItem[] {
