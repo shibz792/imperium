@@ -246,7 +246,7 @@ export default async function PropertyDetailPage({ params, searchParams }: { par
           ) : (
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
               {property.media.map((m) => (
-                <div key={m.id} className="group relative">
+                <div key={m.id} className="relative">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={m.url} alt={m.caption ?? ""} className="aspect-video w-full rounded border border-black/8 bg-ir-ivory object-cover" />
                   {m.isCover && (
@@ -254,17 +254,20 @@ export default async function PropertyDetailPage({ params, searchParams }: { par
                       <Star size={10} className="fill-current" /> Cover
                     </span>
                   )}
-                  <div className="absolute inset-x-2 bottom-2 flex items-center justify-end gap-1.5 opacity-0 transition-opacity group-hover:opacity-100">
+                  {/* Always visible, not hover-only — hover reveals don't
+                      exist on touch devices, which made these unreachable
+                      on phone/tablet. */}
+                  <div className="absolute inset-x-0 bottom-0 flex items-center justify-end gap-1.5 rounded-b bg-gradient-to-t from-black/70 to-transparent p-2 pt-5">
                     {!m.isCover && (
                       <form action={setCoverPhoto.bind(null, id, m.id)}>
-                        <button type="submit" title="Set as cover photo" className="flex h-7 w-7 items-center justify-center rounded-full bg-black/55 text-white hover:bg-black/75">
+                        <button type="submit" title="Set as cover photo" className="flex h-7 w-7 items-center justify-center rounded-full bg-black/40 text-white hover:bg-black/60">
                           <Star size={13} />
                         </button>
                       </form>
                     )}
                     {isAdmin(user) && (
                       <form action={deletePropertyMedia.bind(null, id, m.id)}>
-                        <button type="submit" title="Delete photo" className="flex h-7 w-7 items-center justify-center rounded-full bg-black/55 text-white hover:bg-[color:var(--color-brick)]">
+                        <button type="submit" title="Delete photo" className="flex h-7 w-7 items-center justify-center rounded-full bg-black/40 text-white hover:bg-[color:var(--color-brick)]">
                           <Trash2 size={13} />
                         </button>
                       </form>
