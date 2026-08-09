@@ -41,7 +41,8 @@ Return strict JSON only, matching this shape:
         "city": string, "district": string, "address": string,
         "sizeSqft": number, "sizePerches": number, "sizeAcres": number,
         "totalPrice": number, "monthlyRental": number, "annualLeaseValue": number, "currency": "LKR",
-        "bedrooms": number, "features": { [key: string]: boolean }, "description": string
+        "bedrooms": number, "bathrooms": number, "floors": number, "priceNegotiable": boolean, "landmark": string,
+        "features": { [key: string]: boolean }, "description": string
         // for kind=requirement:
         "clientName": string, "clientPhone": string, "title": string,
         "dealType": "BUY"|"RENT"|"LEASE",

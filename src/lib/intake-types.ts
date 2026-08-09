@@ -22,6 +22,10 @@ export type PropertyDraftFields = {
   annualLeaseValue?: number;
   currency?: string;
   bedrooms?: number;
+  bathrooms?: number;
+  floors?: number;
+  priceNegotiable?: boolean;
+  landmark?: string;
   features?: Record<string, boolean>;
   description?: string;
 };
