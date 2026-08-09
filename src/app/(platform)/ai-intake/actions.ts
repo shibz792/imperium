@@ -108,7 +108,7 @@ export async function approvePropertyDraft(
   return { id: property.id };
 }
 
-export async function approveRequirementDraft(fields: RequirementDraftFields, sourceExcerpt: string) {
+export async function approveRequirementDraft(fields: RequirementDraftFields, sourceExcerpt: string, origin?: { source: string }) {
   const user = await requireUser();
   const clientId = await findOrCreateContact(fields.clientName, fields.clientPhone, fields.dealType === "RENT" ? "TENANT" : "BUYER", user.id);
 
@@ -131,7 +131,7 @@ export async function approveRequirementDraft(fields: RequirementDraftFields, so
       urgency: fields.urgency ?? "MEDIUM",
       quality: "UNVERIFIED",
       status: "NEW",
-      source: "Imperium AI Intake",
+      source: origin?.source ?? "Imperium AI Intake",
       confidentialNotes: fields.notes && fields.notes !== sourceExcerpt ? fields.notes : undefined,
       lastContacted: new Date(),
       assignedAgentId: user.id,

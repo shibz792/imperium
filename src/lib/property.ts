@@ -107,7 +107,15 @@ const DIVIDER = "▫️▫️▫️▫️▫️▫️▫️▫️▫️▫️";
 // details every time instead of everyone typing their own. A status header
 // (FOR SALE/RENT/LEASE) up top so it reads at a glance in a chat thread,
 // same as a real listing card would.
-export function whatsAppMessage(p: Property) {
+//
+// approvedContent: an admin/marketing-approved AI generation for this
+// property (Marketing Studio, contentType WHATSAPP) takes over completely
+// when present — approving one there is supposed to actually change what
+// every copy button in the app sends, not just sit in a list. Callers
+// resolve this themselves (a single extra `marketingAssets` include) so
+// this stays a pure function with no Prisma dependency of its own.
+export function whatsAppMessage(p: Property, approvedContent?: string | null) {
+  if (approvedContent) return approvedContent;
   const price = relevantAskingPrice(p);
   const size = primarySize(p);
   const features = p.featuresJson && typeof p.featuresJson === "object" ? Object.keys(p.featuresJson as object) : [];

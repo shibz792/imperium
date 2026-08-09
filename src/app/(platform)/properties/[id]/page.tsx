@@ -16,6 +16,7 @@ import { GoogleDriveBrowser } from "@/components/GoogleDriveBrowser";
 import { createNote, deleteNote } from "../../notes/actions";
 import { createTask, setTaskStatus, deleteTask } from "../../tasks/actions";
 import { ConfirmSubmitButton } from "@/components/ConfirmSubmitButton";
+import { NoteAiSuggestions } from "@/components/NoteAiSuggestions";
 import { SubmitButton } from "@/components/SubmitButton";
 
 const CAN_DELETE_ANY_NOTE = ["SUPER_ADMIN", "DIRECTOR", "SALES_MANAGER"];
@@ -72,6 +73,9 @@ export default async function PropertyDetailPage({ params, searchParams }: { par
   const completeness = completenessScore(property);
   const stale = isStale(property);
   const basePath = `/properties/${id}`;
+  // marketingAssets is already ordered createdAt desc — the first approved
+  // WhatsApp generation, if any, is what actually gets copied everywhere.
+  const approvedWhatsAppContent = property.marketingAssets.find((a) => a.contentType === "WHATSAPP" && a.approved)?.content;
 
   const offers = property.deals.flatMap((d) => d.offers.map((o) => ({ ...o, deal: d })));
 
@@ -249,7 +253,7 @@ export default async function PropertyDetailPage({ params, searchParams }: { par
           </SectionCard>
 
           <div className="lg:col-span-3">
-            <CopyableMessage message={whatsAppMessage(property)} />
+            <CopyableMessage message={whatsAppMessage(property, approvedWhatsAppContent)} />
           </div>
         </div>
       )}
@@ -579,6 +583,7 @@ export default async function PropertyDetailPage({ params, searchParams }: { par
                       </form>
                     )}
                   </div>
+                  <NoteAiSuggestions noteId={n.id} />
                 </li>
               ))}
             </ul>

@@ -37,7 +37,12 @@ export default async function PropertiesPage({ searchParams }: { searchParams: P
   const [properties, total] = await Promise.all([
     prisma.property.findMany({
       where,
-      include: { assignedAgent: true, owner: true, media: { where: { isCover: true }, take: 1 } },
+      include: {
+        assignedAgent: true,
+        owner: true,
+        media: { where: { isCover: true }, take: 1 },
+        marketingAssets: { where: { contentType: "WHATSAPP", approved: true }, orderBy: { createdAt: "desc" }, take: 1 },
+      },
       orderBy: { createdAt: "desc" },
       skip,
       take,
@@ -137,7 +142,7 @@ export default async function PropertiesPage({ searchParams }: { searchParams: P
       ) : view === "cards" ? (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {properties.map((p) => (
-            <PropertyCard key={p.id} property={p} />
+            <PropertyCard key={p.id} property={p} approvedWhatsApp={p.marketingAssets[0]?.content} />
           ))}
         </div>
       ) : (
@@ -209,7 +214,7 @@ export default async function PropertiesPage({ searchParams }: { searchParams: P
                     <td className="px-4 py-3 text-black/60">{p.assignedAgent?.name ?? "-"}</td>
                     <td className="px-4 py-3 text-black/50">{formatDate(p.lastVerifiedDate)}</td>
                     <td className="px-4 py-3 text-right">
-                      <CopyWhatsAppButton message={whatsAppMessage(p)} />
+                      <CopyWhatsAppButton message={whatsAppMessage(p, p.marketingAssets[0]?.content)} />
                     </td>
                   </ClickableRow>
                 );

@@ -48,6 +48,15 @@ export type RequirementDraftFields = {
   notes?: string;
 };
 
+// A note-derived follow-up — deliberately much thinner than the property/
+// requirement shapes above. dueAt is an ISO string, not a Date, so this
+// stays JSON-safe end to end (Groq response → client state → server action).
+export type TaskDraftFields = {
+  title?: string;
+  dueAt?: string;
+  type?: "CONTACT_INQUIRY" | "VIEWING_CONFIRM" | "CLIENT_UPDATE" | "LISTING_VERIFY" | "OFFER_RESPONSE" | "LEASE_EXPIRY" | "REQUIREMENT_RECONFIRM" | "CUSTOM";
+};
+
 export type DuplicateHint = {
   type: "property" | "requirement" | "contact";
   id: string;
@@ -58,11 +67,11 @@ export type DuplicateHint = {
 
 export type Draft = {
   id: string; // client-side temp id
-  kind: "property" | "requirement";
+  kind: "property" | "requirement" | "task";
   sourceExcerpt: string;
   confidence: number; // overall 0-100
   fieldConfidence: FieldConfidence;
-  fields: PropertyDraftFields | RequirementDraftFields;
+  fields: PropertyDraftFields | RequirementDraftFields | TaskDraftFields;
   missingFields: string[];
   suggestedFollowUp?: string;
   duplicates: DuplicateHint[];

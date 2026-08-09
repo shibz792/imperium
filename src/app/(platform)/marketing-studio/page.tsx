@@ -5,6 +5,7 @@ import { groqConfigured } from "@/lib/groq";
 import { PageHeader, Badge, EmptyState } from "@/components/ui";
 import { CONTENT_TYPE_LABELS } from "@/lib/marketing";
 import { MarketingStudioClient } from "./MarketingStudioClient";
+import { MarketingAssetActions } from "./MarketingAssetActions";
 import { approveAsset } from "./actions";
 
 export default async function MarketingStudioPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
@@ -41,11 +42,14 @@ export default async function MarketingStudioPage({ searchParams }: { searchPara
                 <Badge tone="navy">{CONTENT_TYPE_LABELS[a.contentType as keyof typeof CONTENT_TYPE_LABELS]}</Badge>
                 <Badge tone="gray">{a.language}</Badge>
                 <Badge tone={a.approved ? "green" : "amber"}>{a.approved ? `Approved by ${a.approvedBy?.name ?? ""}` : "Pending approval"}</Badge>
-                {!a.approved && (
-                  <form action={approveAsset.bind(null, a.id)} className="ml-auto">
-                    <button type="submit" className="ir-btn ir-btn-gold !py-1 !text-xs">Approve</button>
-                  </form>
-                )}
+                <div className="ml-auto flex items-center gap-2">
+                  {!a.approved && (
+                    <form action={approveAsset.bind(null, a.id)}>
+                      <button type="submit" className="ir-btn ir-btn-gold !py-1 !text-xs">Approve</button>
+                    </form>
+                  )}
+                  <MarketingAssetActions id={a.id} content={a.content} approved={a.approved} />
+                </div>
               </div>
               <p className="whitespace-pre-line text-xs text-black/60">{a.content}</p>
             </div>

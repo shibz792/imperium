@@ -33,7 +33,13 @@ function panelTone(seed: string) {
 // real <button>, and nesting any interactive element inside an <a> is
 // invalid HTML that breaks hydration (found and fixed the same bug once
 // already this session, on the Agents page's broker cards).
-export function PropertyCard({ property }: { property: Property & { assignedAgent?: { name: string } | null; media?: { url: string }[] } }) {
+export function PropertyCard({
+  property,
+  approvedWhatsApp,
+}: {
+  property: Property & { assignedAgent?: { name: string } | null; media?: { url: string }[] };
+  approvedWhatsApp?: string | null;
+}) {
   const completeness = completenessScore(property);
   const stale = isStale(property);
   const Icon = CATEGORY_ICON[property.category];
@@ -67,7 +73,7 @@ export function PropertyCard({ property }: { property: Property & { assignedAgen
       <div className="flex flex-1 flex-col p-4">
         <div className="mb-1 flex items-start justify-between gap-2">
           <h3 className="line-clamp-2 text-sm font-semibold leading-snug text-ir-navy group-hover:text-ir-gold-dark">{property.title}</h3>
-          <CopyWhatsAppButton message={whatsAppMessage(property)} className="-mt-1 -mr-1 shrink-0" />
+          <CopyWhatsAppButton message={whatsAppMessage(property, approvedWhatsApp)} className="-mt-1 -mr-1 shrink-0" />
         </div>
         <p className="mb-3 text-xs text-black/45">{[property.city, property.district].filter(Boolean).join(", ") || "Location tbc"}</p>
 

@@ -8,6 +8,7 @@ import { formatDateTime } from "@/lib/format";
 import { createNote, deleteNote } from "./actions";
 import { ConfirmSubmitButton } from "@/components/ConfirmSubmitButton";
 import { SubmitButton } from "@/components/SubmitButton";
+import { NoteAiSuggestions } from "@/components/NoteAiSuggestions";
 
 const CAN_DELETE_ANY = ["SUPER_ADMIN", "DIRECTOR", "SALES_MANAGER"];
 
@@ -71,6 +72,7 @@ export default async function NotesPage() {
                   </form>
                 )}
               </div>
+              <NoteAiSuggestions noteId={n.id} />
             </div>
           ))}
         </div>

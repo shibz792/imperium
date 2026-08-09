@@ -30,6 +30,13 @@ export default async function MatchmakerPage({ searchParams }: { searchParams: P
   const anchorProperty = mode === "property" ? properties.find((p) => p.id === anchorId) : undefined;
   const anchorRequirement = mode === "requirement" ? requirements.find((r) => r.id === anchorId) : undefined;
 
+  // A targeted single-row lookup rather than including marketingAssets on
+  // the whole active-listings query above — only the one property actually
+  // being shared needs it.
+  const approvedWhatsAppAsset = anchorProperty
+    ? await prisma.marketingAsset.findFirst({ where: { propertyId: anchorProperty.id, contentType: "WHATSAPP", approved: true }, orderBy: { createdAt: "desc" } })
+    : null;
+
   // Derive a sensible starting search from the requirement itself, so
   // "find it on ikman/LankaPropertyWeb" starts pre-aimed instead of blank.
   let sourcingPrefill: { keyword: string; dealType: "BUY" | "RENT" | "LEASE"; district: string; propertyType: string } | null = null;
@@ -182,7 +189,7 @@ export default async function MatchmakerPage({ searchParams }: { searchParams: P
       {anchorProperty && (
         <details className="ir-card mt-5 p-4">
           <summary className="cursor-pointer text-xs font-medium text-black/50">Preview WhatsApp-ready message for this property</summary>
-          <pre className="mt-3 whitespace-pre-wrap rounded bg-ir-ivory p-3 text-xs text-ir-navy">{whatsAppMessage(anchorProperty)}</pre>
+          <pre className="mt-3 whitespace-pre-wrap rounded bg-ir-ivory p-3 text-xs text-ir-navy">{whatsAppMessage(anchorProperty, approvedWhatsAppAsset?.content)}</pre>
         </details>
       )}
 
