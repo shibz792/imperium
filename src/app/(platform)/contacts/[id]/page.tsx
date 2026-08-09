@@ -1,16 +1,19 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Pencil } from "lucide-react";
+import { Pencil, Trash2 } from "lucide-react";
 import { prisma } from "@/lib/prisma";
-import { requireRole, canSeeConfidential } from "@/lib/auth";
+import { requireRole, canSeeConfidential, isAdmin } from "@/lib/auth";
 import { SALES_TEAM_ROLES } from "@/lib/roles";
 import { Badge, Field, PageHeader, SectionCard, EmptyState } from "@/components/ui";
 import { WhatsAppButton } from "@/components/WhatsAppButton";
+import { ConfirmSubmitButton } from "@/components/ConfirmSubmitButton";
 import { LISTING_STATUS_TONE, REQUIREMENT_STATUS_TONE, DEAL_STAGE_TONE } from "@/lib/badges";
 import { formatCurrency, formatDate, titleCase } from "@/lib/format";
+import { deleteContact } from "../actions";
 
-export default async function ContactDetailPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function ContactDetailPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ deleteError?: string }> }) {
   const { id } = await params;
+  const sp = await searchParams;
   const user = await requireRole(SALES_TEAM_ROLES);
   const showConfidential = canSeeConfidential(user);
 
@@ -29,6 +32,12 @@ export default async function ContactDetailPage({ params }: { params: Promise<{ 
 
   return (
     <div>
+      {sp.deleteError && (
+        <div className="mb-5 flex items-center gap-2 rounded border border-[#92601f4d] bg-[color:var(--color-bronze-tint)] px-4 py-2.5 text-sm text-[color:var(--color-bronze)]">
+          {sp.deleteError}
+        </div>
+      )}
+
       <PageHeader
         eyebrow={`${contact.contactRef} · ${titleCase(contact.contactType)}`}
         title={`${contact.name}`}
@@ -38,6 +47,16 @@ export default async function ContactDetailPage({ params }: { params: Promise<{ 
             {isBroker && <Link href="/agents" className="ir-btn ir-btn-ghost">View Agents roster</Link>}
             <Link href={`/contacts/${id}/edit`} className="ir-btn ir-btn-ghost"><Pencil size={14} /> Edit</Link>
             {showConfidential && <WhatsAppButton phone={contact.phone} message={`Hi ${contact.name.split(" ")[0]}, `} />}
+            {isAdmin(user) && (
+              <form action={deleteContact.bind(null, id)}>
+                <ConfirmSubmitButton
+                  confirmMessage={`Permanently delete ${contact.name}? This can't be undone, and only works if nothing else references them.`}
+                  className="ir-btn ir-btn-danger"
+                >
+                  <Trash2 size={14} /> Delete
+                </ConfirmSubmitButton>
+              </form>
+            )}
           </>
         }
       />

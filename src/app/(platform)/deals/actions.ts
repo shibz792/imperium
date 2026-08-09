@@ -3,10 +3,11 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import { requireUser } from "@/lib/auth";
+import { requireUser, requireRole, ADMIN_ROLES } from "@/lib/auth";
 import { nextDealRef } from "@/lib/refs";
 import { writeAudit, logActivity } from "@/lib/audit";
 import { computeAgentSplit, agencyFeePctForCategory } from "@/lib/commission";
+import { deleteGuarded } from "@/lib/deleteGuard";
 
 function str(fd: FormData, key: string): string | undefined {
   const v = fd.get(key);
@@ -127,4 +128,14 @@ export async function addDealCollaborator(dealId: string, formData: FormData) {
   ]);
   await logActivity({ entityType: "deal", dealId: deal.id, type: "COLLABORATOR_ADDED", message: `${user.name} added ${agent?.name ?? "an agent"} as a collaborator on this deal.`, userId: user.id });
   revalidatePath(`/deals/${dealId}`);
+}
+
+export async function deleteDeal(id: string) {
+  const admin = await requireRole(ADMIN_ROLES);
+  const result = await deleteGuarded(() => prisma.deal.delete({ where: { id } }), "offers, viewings or a commission record on this deal");
+  if (!result.ok) redirect(`/deals/${id}?deleteError=${encodeURIComponent(result.error)}`);
+
+  await writeAudit({ userId: admin.id, action: "DELETE", entityType: "deal", entityId: id });
+  revalidatePath("/deals");
+  redirect("/deals");
 }

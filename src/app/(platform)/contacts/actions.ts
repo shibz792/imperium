@@ -3,9 +3,10 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import { requireUser } from "@/lib/auth";
+import { requireUser, requireRole, ADMIN_ROLES } from "@/lib/auth";
 import { nextContactRef } from "@/lib/refs";
 import { writeAudit } from "@/lib/audit";
+import { deleteGuarded } from "@/lib/deleteGuard";
 
 function str(fd: FormData, key: string): string | undefined {
   const v = fd.get(key);
@@ -50,4 +51,14 @@ export async function updateContact(id: string, formData: FormData) {
   revalidatePath("/contacts");
   revalidatePath(`/contacts/${id}`);
   redirect(`/contacts/${id}`);
+}
+
+export async function deleteContact(id: string) {
+  const admin = await requireRole(ADMIN_ROLES);
+  const result = await deleteGuarded(() => prisma.contact.delete({ where: { id } }), "requirements, deals or viewings linked to this contact");
+  if (!result.ok) redirect(`/contacts/${id}?deleteError=${encodeURIComponent(result.error)}`);
+
+  await writeAudit({ userId: admin.id, action: "DELETE", entityType: "contact", entityId: id });
+  revalidatePath("/contacts");
+  redirect("/contacts");
 }

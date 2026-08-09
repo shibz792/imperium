@@ -1,19 +1,22 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { Trash2 } from "lucide-react";
 import { prisma } from "@/lib/prisma";
-import { requireRole, canSeeFinance, canSeeConfidential } from "@/lib/auth";
+import { requireRole, canSeeFinance, canSeeConfidential, isAdmin } from "@/lib/auth";
 import { DEAL_ROLES } from "@/lib/roles";
 import { Badge, Field, PageHeader, SectionCard, EmptyState } from "@/components/ui";
 import { WhatsAppButton } from "@/components/WhatsAppButton";
 import { SubmitButton } from "@/components/SubmitButton";
+import { ConfirmSubmitButton } from "@/components/ConfirmSubmitButton";
 import { DEAL_STAGE_TONE, OFFER_STATUS_TONE, VIEWING_STATUS_TONE, COMMISSION_STATUS_TONE } from "@/lib/badges";
 import { formatCurrency, formatDate, formatDateTime, titleCase } from "@/lib/format";
-import { updateDealStage, addOffer, respondOffer, addDealCollaborator } from "../actions";
+import { updateDealStage, addOffer, respondOffer, addDealCollaborator, deleteDeal } from "../actions";
 import { updateCommissionSplit } from "../../commissions/actions";
 import { companyAmount, agencyFeePctSource, agentSplitSource } from "@/lib/commission";
 
-export default async function DealDetailPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function DealDetailPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ deleteError?: string }> }) {
   const { id } = await params;
+  const sp = await searchParams;
   const user = await requireRole(DEAL_ROLES);
   const showFinance = canSeeFinance(user);
   const showConfidential = canSeeConfidential(user);
@@ -41,10 +44,28 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
 
   return (
     <div>
+      {sp.deleteError && (
+        <div className="mb-5 flex items-center gap-2 rounded border border-[#92601f4d] bg-[color:var(--color-bronze-tint)] px-4 py-2.5 text-sm text-[color:var(--color-bronze)]">
+          {sp.deleteError}
+        </div>
+      )}
+
       <PageHeader
         eyebrow={deal.dealRef}
         title={deal.property.title}
         description={`${deal.client.name}${deal.requirement ? ` · matched via ${deal.requirement.requirementRef}` : ""}`}
+        actions={
+          isAdmin(user) ? (
+            <form action={deleteDeal.bind(null, id)}>
+              <ConfirmSubmitButton
+                confirmMessage={`Permanently delete this deal (${deal.dealRef})? This can't be undone, and only works if nothing else references it.`}
+                className="ir-btn ir-btn-danger"
+              >
+                <Trash2 size={14} /> Delete
+              </ConfirmSubmitButton>
+            </form>
+          ) : undefined
+        }
       />
 
       <div className="mb-5 flex flex-wrap items-center gap-2">

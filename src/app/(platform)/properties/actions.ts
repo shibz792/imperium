@@ -3,12 +3,13 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import { requireUser, isAdmin } from "@/lib/auth";
+import { requireUser, isAdmin, requireRole, ADMIN_ROLES } from "@/lib/auth";
 import { nextPropertyRef, nextContactRef } from "@/lib/refs";
 import { writeAudit, logActivity } from "@/lib/audit";
 import { districtForCity } from "@/lib/locations";
 import { applyMarkup } from "@/lib/property";
 import { downloadDriveFile, ensurePropertyDriveFolder, uploadToPropertyFolder, trashDriveFile } from "@/lib/google";
+import { deleteGuarded } from "@/lib/deleteGuard";
 
 const NO_STORAGE_ACCOUNT_ERROR = "No Google Drive storage account is configured yet — an admin needs to connect one and designate it in Settings.";
 
@@ -307,4 +308,14 @@ export async function importPhotosFromDrive(propertyId: string, fileIds: string[
   revalidatePath(`/properties/${propertyId}`);
   revalidatePath("/properties");
   return { ok: true };
+}
+
+export async function deleteProperty(id: string) {
+  const admin = await requireRole(ADMIN_ROLES);
+  const result = await deleteGuarded(() => prisma.property.delete({ where: { id } }), "deals, viewings, documents or marketing content on this property");
+  if (!result.ok) redirect(`/properties/${id}?deleteError=${encodeURIComponent(result.error)}`);
+
+  await writeAudit({ userId: admin.id, action: "DELETE", entityType: "property", entityId: id });
+  revalidatePath("/properties");
+  redirect("/properties");
 }

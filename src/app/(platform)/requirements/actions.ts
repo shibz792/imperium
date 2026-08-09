@@ -3,9 +3,10 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import { requireUser } from "@/lib/auth";
+import { requireUser, requireRole, ADMIN_ROLES } from "@/lib/auth";
 import { nextRequirementRef, nextContactRef } from "@/lib/refs";
 import { writeAudit, logActivity } from "@/lib/audit";
+import { deleteGuarded } from "@/lib/deleteGuard";
 
 function str(fd: FormData, key: string): string | undefined {
   const v = fd.get(key);
@@ -150,4 +151,14 @@ export async function changeRequirementStatus(id: string, status: string) {
   await writeAudit({ userId: user.id, action: "STATUS_CHANGE", entityType: "requirement", entityId: id, after: { status } });
   revalidatePath(`/requirements/${id}`);
   revalidatePath("/requirements");
+}
+
+export async function deleteRequirement(id: string) {
+  const admin = await requireRole(ADMIN_ROLES);
+  const result = await deleteGuarded(() => prisma.requirement.delete({ where: { id } }), "deals or matches on this requirement");
+  if (!result.ok) redirect(`/requirements/${id}?deleteError=${encodeURIComponent(result.error)}`);
+
+  await writeAudit({ userId: admin.id, action: "DELETE", entityType: "requirement", entityId: id });
+  revalidatePath("/requirements");
+  redirect("/requirements");
 }

@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Pencil, RefreshCcw, Trash2, CheckCircle2, Circle } from "lucide-react";
 import { prisma } from "@/lib/prisma";
-import { requireRole, canSeeConfidential } from "@/lib/auth";
+import { requireRole, canSeeConfidential, isAdmin } from "@/lib/auth";
 import { SALES_TEAM_ROLES } from "@/lib/roles";
 import { Badge, Field, PageHeader, SectionCard, Tabs, EmptyState } from "@/components/ui";
 import { WhatsAppButton } from "@/components/WhatsAppButton";
@@ -11,7 +11,7 @@ import { whatsAppMessageForRequirement } from "@/lib/property";
 import { REQUIREMENT_STATUS_TONE, URGENCY_TONE, DEAL_STAGE_TONE } from "@/lib/badges";
 import { formatCurrency, formatDate, formatDateTime, titleCase, daysAgo } from "@/lib/format";
 import { scoreMatch, explainMatch } from "@/lib/match";
-import { reconfirmRequirement, changeRequirementStatus } from "../actions";
+import { reconfirmRequirement, changeRequirementStatus, deleteRequirement } from "../actions";
 import { createTask, setTaskStatus, deleteTask } from "../../tasks/actions";
 import { ConfirmSubmitButton } from "@/components/ConfirmSubmitButton";
 import { SubmitButton } from "@/components/SubmitButton";
@@ -24,9 +24,10 @@ const TABS = [
   { key: "activity", label: "Activity" },
 ];
 
-export default async function RequirementDetailPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ tab?: string }> }) {
+export default async function RequirementDetailPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ tab?: string; deleteError?: string }> }) {
   const { id } = await params;
-  const { tab = "overview" } = await searchParams;
+  const sp = await searchParams;
+  const { tab = "overview" } = sp;
   const user = await requireRole(SALES_TEAM_ROLES);
   const showConfidential = canSeeConfidential(user);
 
@@ -71,6 +72,12 @@ export default async function RequirementDetailPage({ params, searchParams }: { 
 
   return (
     <div>
+      {sp.deleteError && (
+        <div className="mb-5 flex items-center gap-2 rounded border border-[#92601f4d] bg-[color:var(--color-bronze-tint)] px-4 py-2.5 text-sm text-[color:var(--color-bronze)]">
+          {sp.deleteError}
+        </div>
+      )}
+
       <PageHeader
         eyebrow={`${requirement.requirementRef} · ${titleCase(requirement.type)}`}
         title={requirement.title}
@@ -81,6 +88,16 @@ export default async function RequirementDetailPage({ params, searchParams }: { 
             <form action={reconfirmRequirement.bind(null, id)}>
               <button type="submit" className="ir-btn ir-btn-gold"><RefreshCcw size={14} /> Reconfirm active</button>
             </form>
+            {isAdmin(user) && (
+              <form action={deleteRequirement.bind(null, id)}>
+                <ConfirmSubmitButton
+                  confirmMessage={`Permanently delete "${requirement.title}"? This can't be undone, and only works if nothing else references it.`}
+                  className="ir-btn ir-btn-danger"
+                >
+                  <Trash2 size={14} /> Delete
+                </ConfirmSubmitButton>
+              </form>
+            )}
           </>
         }
       />

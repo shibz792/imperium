@@ -3,9 +3,10 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import { requireUser } from "@/lib/auth";
-import { logActivity } from "@/lib/audit";
+import { requireUser, requireRole, ADMIN_ROLES } from "@/lib/auth";
+import { writeAudit, logActivity } from "@/lib/audit";
 import { createCalendarEvent, deleteCalendarEvent, freeBusy } from "@/lib/google";
+import { deleteGuarded } from "@/lib/deleteGuard";
 
 const VIEWING_DURATION_MS = 45 * 60_000;
 
@@ -70,4 +71,18 @@ export async function submitFeedback(id: string, formData: FormData) {
   const viewing = await prisma.viewing.update({ where: { id }, data: { feedbackRating: rating, feedbackNotes: notes, status: "COMPLETED" } });
   await logActivity({ entityType: "property", propertyId: viewing.propertyId, type: "VIEWING_FEEDBACK", message: `${user.name} logged viewing feedback${rating ? ` (${rating}/5)` : ""}.`, userId: user.id });
   revalidatePath("/viewings");
+}
+
+export async function deleteViewing(id: string) {
+  const admin = await requireRole(ADMIN_ROLES);
+  const viewing = await prisma.viewing.findUnique({ where: { id } });
+  if (!viewing) return;
+  if (viewing.googleEventId && viewing.agentId) await deleteCalendarEvent(viewing.agentId, viewing.googleEventId);
+
+  const result = await deleteGuarded(() => prisma.viewing.delete({ where: { id } }), "records still tied to this viewing");
+  if (!result.ok) redirect(`/viewings?deleteError=${encodeURIComponent(result.error)}`);
+
+  await writeAudit({ userId: admin.id, action: "DELETE", entityType: "viewing", entityId: id });
+  revalidatePath("/viewings");
+  redirect("/viewings");
 }

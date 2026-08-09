@@ -1,15 +1,16 @@
 import Link from "next/link";
-import { Plus, TriangleAlert } from "lucide-react";
+import { Plus, TriangleAlert, Trash2 } from "lucide-react";
 import { prisma } from "@/lib/prisma";
-import { requireRole } from "@/lib/auth";
+import { requireRole, isAdmin } from "@/lib/auth";
 import { VIEWING_MATCH_ROLES } from "@/lib/roles";
 import { PageHeader, Badge, EmptyState } from "@/components/ui";
+import { ConfirmSubmitButton } from "@/components/ConfirmSubmitButton";
 import { VIEWING_STATUS_TONE } from "@/lib/badges";
 import { formatDateTime, titleCase } from "@/lib/format";
-import { updateViewingStatus, submitFeedback } from "./actions";
+import { updateViewingStatus, submitFeedback, deleteViewing } from "./actions";
 
-export default async function ViewingsPage({ searchParams }: { searchParams: Promise<{ conflict?: string }> }) {
-  await requireRole(VIEWING_MATCH_ROLES);
+export default async function ViewingsPage({ searchParams }: { searchParams: Promise<{ conflict?: string; deleteError?: string }> }) {
+  const user = await requireRole(VIEWING_MATCH_ROLES);
   const sp = await searchParams;
   const viewings = await prisma.viewing.findMany({
     include: { property: true, contact: true, agent: true },
@@ -33,6 +34,11 @@ export default async function ViewingsPage({ searchParams }: { searchParams: Pro
           <TriangleAlert size={15} className="shrink-0" /> Booked, but the assigned agent&rsquo;s Google Calendar shows something else at that time — worth a double-check.
         </div>
       )}
+      {sp.deleteError && (
+        <div className="mb-5 flex items-center gap-2 rounded border border-[#92601f4d] bg-[color:var(--color-bronze-tint)] px-4 py-2.5 text-sm text-[color:var(--color-bronze)]">
+          {sp.deleteError}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
         <section>
@@ -51,12 +57,19 @@ export default async function ViewingsPage({ searchParams }: { searchParams: Pro
                     </div>
                     <Badge tone={(VIEWING_STATUS_TONE[v.status] as never) ?? "gray"}>{titleCase(v.status)}</Badge>
                   </div>
-                  <div className="mt-2.5 flex gap-1.5">
+                  <div className="mt-2.5 flex items-center gap-1.5">
                     {v.status === "SCHEDULED" && (
                       <form action={updateViewingStatus.bind(null, v.id, "CONFIRMED")}><button className="ir-btn ir-btn-ghost !py-1 !text-[0.7rem]">Confirm</button></form>
                     )}
                     <form action={updateViewingStatus.bind(null, v.id, "CANCELLED")}><button className="ir-btn ir-btn-ghost !py-1 !text-[0.7rem]">Cancel</button></form>
                     <form action={updateViewingStatus.bind(null, v.id, "NO_SHOW")}><button className="ir-btn ir-btn-ghost !py-1 !text-[0.7rem]">No-show</button></form>
+                    {isAdmin(user) && (
+                      <form action={deleteViewing.bind(null, v.id)} className="ml-auto">
+                        <ConfirmSubmitButton confirmMessage="Permanently delete this viewing? This can't be undone." title="Delete viewing" className="flex h-6 w-6 items-center justify-center rounded text-black/25 hover:bg-black/[0.05] hover:text-[color:var(--color-brick)]">
+                          <Trash2 size={13} />
+                        </ConfirmSubmitButton>
+                      </form>
+                    )}
                   </div>
                 </div>
               ))}
@@ -77,7 +90,16 @@ export default async function ViewingsPage({ searchParams }: { searchParams: Pro
                       <Link href={`/properties/${v.propertyId}`} className="text-sm font-medium text-ir-navy hover:text-ir-gold-dark">{v.property.title}</Link>
                       <div className="mt-0.5 text-xs text-black/45">{v.contact.name} · {formatDateTime(v.scheduledAt)}</div>
                     </div>
-                    <Badge tone={(VIEWING_STATUS_TONE[v.status] as never) ?? "gray"}>{titleCase(v.status)}</Badge>
+                    <div className="flex items-center gap-1.5">
+                      <Badge tone={(VIEWING_STATUS_TONE[v.status] as never) ?? "gray"}>{titleCase(v.status)}</Badge>
+                      {isAdmin(user) && (
+                        <form action={deleteViewing.bind(null, v.id)}>
+                          <ConfirmSubmitButton confirmMessage="Permanently delete this viewing? This can't be undone." title="Delete viewing" className="flex h-6 w-6 items-center justify-center rounded text-black/25 hover:bg-black/[0.05] hover:text-[color:var(--color-brick)]">
+                            <Trash2 size={13} />
+                          </ConfirmSubmitButton>
+                        </form>
+                      )}
+                    </div>
                   </div>
                   {v.feedbackNotes ? (
                     <p className="mt-2 text-xs text-black/60">&ldquo;{v.feedbackNotes}&rdquo; {v.feedbackRating && `(${v.feedbackRating}/5)`}</p>

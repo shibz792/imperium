@@ -10,7 +10,7 @@ import { LISTING_STATUS_TONE, LEGAL_STATUS_TONE, DEAL_STAGE_TONE, VIEWING_STATUS
 import { formatCurrency, formatDate, formatDateTime, titleCase, daysAgo } from "@/lib/format";
 import { completenessScore, isStale, primarySize, relevantAskingPrice, clientPrice, priceUnit, whatsAppMessage } from "@/lib/property";
 import { scoreMatch, explainMatch } from "@/lib/match";
-import { verifyProperty, changeListingStatus, setCoverPhoto, deletePropertyMedia, importPhotosFromDrive } from "../actions";
+import { verifyProperty, changeListingStatus, setCoverPhoto, deletePropertyMedia, importPhotosFromDrive, deleteProperty } from "../actions";
 import { PropertyPhotoUploader } from "../PropertyPhotoUploader";
 import { GoogleDriveBrowser } from "@/components/GoogleDriveBrowser";
 import { createNote, deleteNote } from "../../notes/actions";
@@ -35,9 +35,10 @@ const TABS = [
   { key: "activity", label: "Activity" },
 ];
 
-export default async function PropertyDetailPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ tab?: string }> }) {
+export default async function PropertyDetailPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ tab?: string; deleteError?: string }> }) {
   const { id } = await params;
-  const { tab = "overview" } = await searchParams;
+  const sp = await searchParams;
+  const { tab = "overview" } = sp;
   const user = await requireUser();
   const showConfidential = canSeeConfidential(user);
 
@@ -92,6 +93,12 @@ export default async function PropertyDetailPage({ params, searchParams }: { par
 
   return (
     <div>
+      {sp.deleteError && (
+        <div className="mb-5 flex items-center gap-2 rounded border border-[#92601f4d] bg-[color:var(--color-bronze-tint)] px-4 py-2.5 text-sm text-[color:var(--color-bronze)]">
+          {sp.deleteError}
+        </div>
+      )}
+
       <PageHeader
         eyebrow={`${property.propertyRef} · ${titleCase(property.category)} · ${property.subtype}`}
         title={property.title}
@@ -106,6 +113,16 @@ export default async function PropertyDetailPage({ params, searchParams }: { par
                 <ShieldCheck size={14} /> Verify now
               </button>
             </form>
+            {isAdmin(user) && (
+              <form action={deleteProperty.bind(null, id)}>
+                <ConfirmSubmitButton
+                  confirmMessage={`Permanently delete "${property.title}"? This can't be undone, and only works if nothing else references it.`}
+                  className="ir-btn ir-btn-danger"
+                >
+                  <Trash2 size={14} /> Delete
+                </ConfirmSubmitButton>
+              </form>
+            )}
           </>
         }
       />
