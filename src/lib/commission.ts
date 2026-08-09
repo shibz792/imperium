@@ -39,3 +39,20 @@ export function computeAgentSplit(agencyFeeAmount: number, agent: AgentRate): Ag
 export function companyAmount(agencyFeeAmount: number | null, agentSplitAmount: number | null, brokerSplitAmount: number | null): number {
   return Math.max(0, (agencyFeeAmount ?? 0) - (agentSplitAmount ?? 0) - (brokerSplitAmount ?? 0));
 }
+
+// A commission's two rates each come from one of a few places, and neither
+// number explains itself on screen — this names the source in plain words
+// so reading "6.25%" doesn't require already knowing the priority order
+// (deal override → property-category default; agent's own rate → company
+// default). Reads off what's on record now, not a historical snapshot of
+// what was true the moment the deal closed — good enough for "why is this
+// what it is", not meant as an audit trail.
+export function agencyFeePctSource(deal: { expectedCommissionPct: number | null }, propertyCategory: string): string {
+  return deal.expectedCommissionPct != null ? "set on this deal" : `${propertyCategory.replace(/_/g, " ").toLowerCase()} category default`;
+}
+
+export function agentSplitSource(agent: AgentRate): string {
+  if (agent?.commissionRateType === "FIXED" && agent.commissionRate != null) return "this agent's flat rate";
+  if (agent?.commissionRate != null) return "this agent's rate";
+  return `company default (${DEFAULT_AGENT_SPLIT_PCT}%)`;
+}

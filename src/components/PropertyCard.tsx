@@ -44,9 +44,9 @@ export function PropertyCard({ property }: { property: Property & { assignedAgen
       <div className={`relative flex h-36 items-center justify-center ${cover ? "bg-ir-navy" : panelTone(property.id)}`}>
         {cover ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={cover} alt="" className="absolute inset-0 h-full w-full object-cover" />
+          <img src={cover} alt="" className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-[1.06]" />
         ) : (
-          <Icon size={34} strokeWidth={1} className="text-white/15" />
+          <Icon size={34} strokeWidth={1} className="text-white/15 transition-transform duration-300 group-hover:scale-110" />
         )}
         <div className="absolute left-3 top-3 flex gap-1.5">
           <Badge tone={(LISTING_STATUS_TONE[property.listingStatus] as never) ?? "gray"}>{titleCase(property.listingStatus)}</Badge>

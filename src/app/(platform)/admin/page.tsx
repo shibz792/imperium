@@ -1,3 +1,4 @@
+import { CheckCircle2, TriangleAlert } from "lucide-react";
 import { requireRole, ROLE_LABELS } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { PageHeader, Badge, SectionCard, Tabs } from "@/components/ui";
@@ -15,13 +16,26 @@ const TABS = [
   { key: "audit", label: "Audit log" },
 ];
 
-export default async function AdminPage({ searchParams }: { searchParams: Promise<{ tab?: string }> }) {
+export default async function AdminPage({ searchParams }: { searchParams: Promise<{ tab?: string; commissionRateError?: string; commissionRateSaved?: string }> }) {
   await requireRole(["SUPER_ADMIN"]);
-  const { tab = "users" } = await searchParams;
+  const sp = await searchParams;
+  const { tab = "users" } = sp;
 
   return (
     <div>
       <PageHeader eyebrow="Administration" title="Platform administration" description="Users, permissions, locations, categories and the audit trail." />
+
+      {sp.commissionRateError && (
+        <div className="mb-5 flex items-center gap-2 rounded border border-[#92601f4d] bg-[color:var(--color-bronze-tint)] px-4 py-2.5 text-sm text-[color:var(--color-bronze)]">
+          <TriangleAlert size={15} className="shrink-0" /> That rate for {titleCase(sp.commissionRateError)} wasn&apos;t saved — enter a percentage between 0 and 20.
+        </div>
+      )}
+      {sp.commissionRateSaved === "1" && (
+        <div className="mb-5 flex items-center gap-2 rounded border border-[color:var(--color-forest)]/30 bg-[color:var(--color-forest)]/10 px-4 py-2.5 text-sm text-[color:var(--color-forest)]">
+          <CheckCircle2 size={15} className="shrink-0" /> Commission rate saved.
+        </div>
+      )}
+
       <Tabs tabs={TABS} active={tab} basePath="/admin" />
 
       {tab === "users" && <UsersTab />}
@@ -134,7 +148,7 @@ async function CategoriesTab() {
             <form key={category} action={setCommissionRateRule.bind(null, category)} className="rounded border border-black/8 p-3">
               <label className="ir-label mb-1.5 block">{titleCase(category)}</label>
               <div className="flex items-center gap-1.5">
-                <input name="agencyFeePct" type="number" min={0} step="0.1" defaultValue={rateFor(category)} className="ir-input !py-1.5 !text-sm" />
+                <input name="agencyFeePct" type="number" min={0} max={20} step="0.1" defaultValue={rateFor(category)} className="ir-input !py-1.5 !text-sm" />
                 <span className="text-xs text-black/40">%</span>
               </div>
               <button type="submit" className="ir-btn ir-btn-ghost mt-2 w-full !py-1 !text-[0.7rem]">Save</button>

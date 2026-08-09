@@ -5,11 +5,12 @@ import { requireRole, canSeeFinance, canSeeConfidential } from "@/lib/auth";
 import { DEAL_ROLES } from "@/lib/roles";
 import { Badge, Field, PageHeader, SectionCard, EmptyState } from "@/components/ui";
 import { WhatsAppButton } from "@/components/WhatsAppButton";
+import { SubmitButton } from "@/components/SubmitButton";
 import { DEAL_STAGE_TONE, OFFER_STATUS_TONE, VIEWING_STATUS_TONE, COMMISSION_STATUS_TONE } from "@/lib/badges";
 import { formatCurrency, formatDate, formatDateTime, titleCase } from "@/lib/format";
 import { updateDealStage, addOffer, respondOffer, addDealCollaborator } from "../actions";
 import { updateCommissionSplit } from "../../commissions/actions";
-import { companyAmount } from "@/lib/commission";
+import { companyAmount, agencyFeePctSource, agentSplitSource } from "@/lib/commission";
 
 export default async function DealDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -129,7 +130,7 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
           )}
           <form action={addOffer.bind(null, deal.id)} className="flex gap-1.5">
             <input name="amount" type="number" placeholder="Amount" required className="ir-input !text-xs" />
-            <button type="submit" className="ir-btn ir-btn-gold !text-xs">Log offer</button>
+            <SubmitButton className="ir-btn ir-btn-gold !text-xs">Log offer</SubmitButton>
           </form>
         </SectionCard>
 
@@ -139,11 +140,25 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
           ) : (
             <>
               <div className="grid grid-cols-2 gap-4">
-                <Field label="Agency fee" value={`${formatCurrency(deal.commission.agencyFeeAmount)} (${deal.commission.agencyFeePct}%)`} />
+                <Field
+                  label="Agency fee"
+                  value={
+                    <>
+                      {formatCurrency(deal.commission.agencyFeeAmount)} ({deal.commission.agencyFeePct}%)
+                      <div className="mt-0.5 text-[0.65rem] font-normal normal-case text-black/35">{agencyFeePctSource(deal, deal.property.category)}</div>
+                    </>
+                  }
+                />
                 <Field label="Status" value={<Badge tone={(COMMISSION_STATUS_TONE[deal.commission.status] as never) ?? "gray"}>{titleCase(deal.commission.status)}</Badge>} />
                 <Field
                   label={`Agent split${deal.assignedAgent ? ` (${deal.assignedAgent.name})` : ""}`}
-                  value={`${formatCurrency(deal.commission.agentSplitAmount)}${deal.commission.agentSplitType === "PERCENT" ? ` (${deal.commission.agentSplitPct}%)` : deal.commission.agentSplitType === "FIXED" ? " (flat)" : ""}`}
+                  value={
+                    <>
+                      {formatCurrency(deal.commission.agentSplitAmount)}
+                      {deal.commission.agentSplitType === "PERCENT" ? ` (${deal.commission.agentSplitPct}%)` : deal.commission.agentSplitType === "FIXED" ? " (flat)" : ""}
+                      <div className="mt-0.5 text-[0.65rem] font-normal normal-case text-black/35">{agentSplitSource(deal.assignedAgent)}</div>
+                    </>
+                  }
                 />
                 <Field label="Broker split" value={deal.commission.brokerSplitAmount ? `${formatCurrency(deal.commission.brokerSplitAmount)} (${deal.commission.brokerSplitPct}%)` : "-"} />
                 <Field label="Company keeps" value={formatCurrency(companyAmount(deal.commission.agencyFeeAmount, deal.commission.agentSplitAmount, deal.commission.brokerSplitAmount))} />

@@ -83,12 +83,19 @@
   }
 
   ::-webkit-scrollbar {
-    width: 10px;
-    height: 10px;
+    width: 9px;
+    height: 9px;
   }
   ::-webkit-scrollbar-thumb {
-    background: rgba(9, 21, 38, 0.15);
+    background: rgba(9, 21, 38, 0.14);
     border-radius: 999px;
+    transition: background-color 0.15s ease;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(9, 21, 38, 0.28);
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
   }
 }
 
@@ -119,20 +126,31 @@
     background: var(--color-white);
     border: 1px solid rgba(9, 21, 38, 0.09);
     border-radius: 0.25rem;
+    /* A whisper of a top highlight, not a drop shadow — the brand brief's
+       "hairline rules over shadows" still holds; this is felt more than
+       seen, just enough that a resting card doesn't read perfectly flat. */
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
   }
 
   .ir-card-hover {
-    transition: border-color 0.18s ease, transform 0.18s ease, box-shadow 0.18s ease;
+    transition: border-color 0.2s cubic-bezier(0.4, 0, 0.2, 1), transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   }
   .ir-card-hover:hover {
     border-color: rgba(204, 162, 116, 0.55);
-    box-shadow: 0 1px 2px rgba(9, 21, 38, 0.04), 0 8px 20px -12px rgba(9, 21, 38, 0.18);
+    transform: translateY(-2px);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6), 0 1px 2px rgba(9, 21, 38, 0.04), 0 14px 28px -14px rgba(9, 21, 38, 0.22);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .ir-card-hover:hover {
+      transform: none;
+    }
   }
 
   .ir-editorial {
     font-family: var(--font-fraunces), Georgia, serif;
     font-weight: 600;
     letter-spacing: -0.01em;
+    text-wrap: balance;
   }
 
   /* Thin gold rule — the one recurring accent motif. Used under eyebrows,
@@ -152,7 +170,8 @@
     font-size: 0.8125rem;
     font-weight: 600;
     letter-spacing: 0.005em;
-    transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, transform 0.1s ease;
+    transition: background-color 0.18s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.18s cubic-bezier(0.4, 0, 0.2, 1),
+      color 0.18s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.18s cubic-bezier(0.4, 0, 0.2, 1), transform 0.1s ease;
     white-space: nowrap;
   }
   .ir-btn:active {
@@ -165,15 +184,21 @@
   }
   .ir-btn-primary:hover {
     background: var(--color-navy-light);
+    box-shadow: 0 4px 14px -6px rgba(9, 21, 38, 0.45);
   }
 
+  /* The one button gold is spent on is worth a little more care — a
+     whisper of warm shadow at rest, more of it on hover, so the primary
+     action on a page has a quiet sense of being raised toward you. */
   .ir-btn-gold {
     background: var(--color-gold);
     color: var(--color-navy);
+    box-shadow: 0 1px 3px rgba(169, 127, 86, 0.2);
   }
   .ir-btn-gold:hover {
     background: var(--color-gold-dark);
     color: var(--color-white);
+    box-shadow: 0 6px 16px -6px rgba(169, 127, 86, 0.55);
   }
 
   .ir-btn-ghost {
@@ -219,6 +244,13 @@
     font-size: 0.875rem;
     background: var(--color-white);
     color: var(--color-navy);
+    cursor: pointer;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  }
+  .ir-select:focus {
+    outline: none;
+    border-color: var(--color-gold-dark);
+    box-shadow: 0 0 0 3px rgba(204, 162, 116, 0.18);
   }
 
   /* Bordered tag, not a filled pill — reads as a museum object label

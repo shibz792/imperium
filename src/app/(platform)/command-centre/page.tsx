@@ -282,9 +282,9 @@ export default async function CommandCentrePage({ searchParams }: { searchParams
 
 function HeroFigure({ label, value, accent = false, href }: { label: string; value: string; accent?: boolean; href: string }) {
   return (
-    <Link href={href} className="block">
-      <div className="ir-label mb-1.5 !text-white/35">{label}</div>
-      <div className={`ir-figure text-3xl sm:text-4xl ${accent ? "text-ir-gold" : "text-white"}`}>{value}</div>
+    <Link href={href} className="group block transition-transform duration-200 ease-out hover:-translate-y-0.5">
+      <div className="ir-label mb-1.5 !text-white/35 transition-colors duration-200 group-hover:!text-ir-gold-light/70">{label}</div>
+      <div className={`ir-figure text-3xl sm:text-4xl transition-colors duration-200 ${accent ? "text-ir-gold group-hover:text-ir-gold-light" : "text-white group-hover:text-white/80"}`}>{value}</div>
     </Link>
   );
 }

@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/auth";
 import { VIEWING_MATCH_ROLES } from "@/lib/roles";
 import { PageHeader, Badge, EmptyState } from "@/components/ui";
+import { SubmitButton } from "@/components/SubmitButton";
 import { scoreMatch } from "@/lib/match";
 import { formatCurrency, titleCase } from "@/lib/format";
 import { primarySize, relevantAskingPrice, priceUnit, whatsAppMessage } from "@/lib/property";
@@ -135,9 +136,9 @@ export default async function MatchmakerPage({ searchParams }: { searchParams: P
                         {m.label}
                       </Link>
                       <form action={shareMatch.bind(null, mode === "property" ? anchorProperty!.id : m.propertyId!, mode === "requirement" ? anchorRequirement!.id : m.requirementId!, m.score)}>
-                        <button type="submit" className="ir-btn ir-btn-gold !py-1 !text-xs">
+                        <SubmitButton className="ir-btn ir-btn-gold !py-1 !text-xs" pendingText="Sharing…">
                           <MessageCircle size={12} /> Share via WhatsApp
-                        </button>
+                        </SubmitButton>
                       </form>
                     </div>
                     <div className="text-xs text-black/45">{m.sub}</div>

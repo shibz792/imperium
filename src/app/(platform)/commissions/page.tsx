@@ -8,7 +8,7 @@ import { paginationParams, totalPages as computeTotalPages } from "@/lib/paginat
 import { COMMISSION_STATUS_TONE } from "@/lib/badges";
 import { formatCurrency, formatDate, titleCase } from "@/lib/format";
 import { updateCommissionStatus } from "./actions";
-import { companyAmount } from "@/lib/commission";
+import { companyAmount, agencyFeePctSource, agentSplitSource } from "@/lib/commission";
 
 export default async function CommissionsPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   await requireRole(FINANCE_ROLES);
@@ -80,11 +80,15 @@ export default async function CommissionsPage({ searchParams }: { searchParams: 
                       <Link href={`/deals/${c.dealId}`} className="font-medium text-ir-navy hover:text-ir-gold-dark">{c.deal.property.title}</Link>
                       <div className="mt-0.5 text-[0.7rem] text-black/40">{c.deal.dealRef} · {c.deal.client.name} · {c.deal.assignedAgent?.name ?? "-"}</div>
                     </td>
-                    <td className="px-4 py-3 text-black/70">{formatCurrency(c.agencyFeeAmount)} <span className="text-[0.7rem] text-black/40">({c.agencyFeePct}%)</span></td>
+                    <td className="px-4 py-3 text-black/70">
+                      {formatCurrency(c.agencyFeeAmount)} <span className="text-[0.7rem] text-black/40">({c.agencyFeePct}%)</span>
+                      <div className="text-[0.65rem] text-black/30">{agencyFeePctSource(c.deal, c.deal.property.category)}</div>
+                    </td>
                     <td className="px-4 py-3 text-black/60">
                       {formatCurrency(c.agentSplitAmount)}
                       {c.agentSplitType === "PERCENT" && c.agentSplitPct != null && <span className="text-[0.7rem] text-black/40"> ({c.agentSplitPct}%)</span>}
                       {c.agentSplitType === "FIXED" && <span className="text-[0.7rem] text-black/40"> (flat)</span>}
+                      <div className="text-[0.65rem] text-black/30">{agentSplitSource(c.deal.assignedAgent)}</div>
                     </td>
                     <td className="px-4 py-3 text-black/60">{c.brokerSplitAmount ? formatCurrency(c.brokerSplitAmount) : "-"}</td>
                     <td className="px-4 py-3 text-black/70">{formatCurrency(companyAmount(c.agencyFeeAmount, c.agentSplitAmount, c.brokerSplitAmount))}</td>

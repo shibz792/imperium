@@ -1,11 +1,18 @@
 "use server";
 
 import bcrypt from "bcryptjs";
+import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/auth";
 import { writeAudit } from "@/lib/audit";
 import { deriveUsername } from "@/lib/username";
+
+// A generous ceiling, not a guess at the real number — high enough that no
+// real Sri Lankan agency fee would ever legitimately hit it, low enough
+// that a fat-fingered extra digit (25 instead of 2.5) gets caught instead
+// of silently becoming next quarter's commission math.
+const MAX_AGENCY_FEE_PCT = 20;
 
 function str(fd: FormData, key: string): string | undefined {
   const v = fd.get(key);
@@ -43,7 +50,10 @@ export async function setCommissionRateRule(category: string, formData: FormData
   const admin = await requireRole(["SUPER_ADMIN"]);
   const raw = str(formData, "agencyFeePct");
   const agencyFeePct = raw ? Number(raw) : NaN;
-  if (Number.isNaN(agencyFeePct) || agencyFeePct < 0) return;
+  if (Number.isNaN(agencyFeePct) || agencyFeePct < 0 || agencyFeePct > MAX_AGENCY_FEE_PCT) {
+    // A silent no-op reads as a bug — say what went wrong, even briefly.
+    redirect(`/admin?tab=categories&commissionRateError=${encodeURIComponent(category)}`);
+  }
 
   await prisma.commissionRateRule.upsert({
     where: { category: category as never },
@@ -52,4 +62,5 @@ export async function setCommissionRateRule(category: string, formData: FormData
   });
   await writeAudit({ userId: admin.id, action: "SET_COMMISSION_RATE_RULE", entityType: "commissionRateRule", entityId: category, after: { agencyFeePct } });
   revalidatePath("/admin");
+  redirect("/admin?tab=categories&commissionRateSaved=1");
 }
