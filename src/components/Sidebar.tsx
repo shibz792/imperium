@@ -61,6 +61,17 @@ export function Sidebar({ items, user }: { items: NavItem[]; user: CurrentUser }
   const [collapsed, setCollapsed] = useState(false);
   const { open, setOpen } = useMobileNav();
 
+  // Grouped in the order sections first appear in `items` (already
+  // Workspace → Tools → Records → Business, per nav.ts) rather than a
+  // fixed list here — a role missing an entire section (e.g. no Business
+  // items visible) just doesn't render that heading, nothing to keep in sync.
+  const sections: [string, NavItem[]][] = [];
+  for (const item of items) {
+    const existing = sections.find(([s]) => s === item.section);
+    if (existing) existing[1].push(item);
+    else sections.push([item.section, [item]]);
+  }
+
   return (
     <>
       {open && <div onClick={() => setOpen(false)} className="fixed inset-0 z-40 bg-black/40 lg:hidden" />}
@@ -86,30 +97,37 @@ export function Sidebar({ items, user }: { items: NavItem[]; user: CurrentUser }
         </div>
 
         <nav className="flex-1 overflow-y-auto py-4">
-          <ul className="space-y-0.5 px-3">
-            {items.map((item) => {
-              const Icon = ICONS[item.icon];
-              const active = pathname === item.href || pathname.startsWith(item.href + "/");
-              return (
-                <li key={item.href} className="relative">
-                  {active && <span className={clsx("absolute left-0 top-1/2 h-4 w-[2px] -translate-y-1/2 bg-ir-gold", collapsed && "lg:hidden")} />}
-                  <Link
-                    href={item.href}
-                    title={collapsed ? item.label : undefined}
-                    onClick={() => setOpen(false)}
-                    className={clsx(
-                      "flex items-center gap-3 rounded-[3px] px-3.5 py-2 text-[0.8125rem] font-medium transition-colors",
-                      active ? "bg-white/[0.06] text-ir-gold-light" : "text-white/55 hover:bg-white/[0.04] hover:text-white/90",
-                      collapsed && "lg:justify-center lg:px-0",
-                    )}
-                  >
-                    {Icon && <Icon size={16} strokeWidth={1.6} className="shrink-0" />}
-                    <span className={clsx("truncate tracking-[0.005em]", collapsed && "lg:hidden")}>{item.label}</span>
-                  </Link>
-                </li>
-              );
-            })}
-          </ul>
+          {sections.map(([section, sectionItems]) => (
+            <div key={section} className="mb-1 px-3">
+              <div className={clsx("mb-1 mt-3 px-3.5 text-[0.65rem] font-semibold uppercase tracking-[0.09em] text-white/25 first:mt-0", collapsed && "lg:hidden")}>
+                {section}
+              </div>
+              <ul className="space-y-0.5">
+                {sectionItems.map((item) => {
+                  const Icon = ICONS[item.icon];
+                  const active = pathname === item.href || pathname.startsWith(item.href + "/");
+                  return (
+                    <li key={item.href} className="relative">
+                      {active && <span className={clsx("absolute left-0 top-1/2 h-4 w-[2px] -translate-y-1/2 bg-ir-gold", collapsed && "lg:hidden")} />}
+                      <Link
+                        href={item.href}
+                        title={collapsed ? item.label : undefined}
+                        onClick={() => setOpen(false)}
+                        className={clsx(
+                          "flex items-center gap-3 rounded-[3px] px-3.5 py-2 text-[0.8125rem] font-medium transition-colors",
+                          active ? "bg-white/[0.06] text-ir-gold-light" : "text-white/55 hover:bg-white/[0.04] hover:text-white/90",
+                          collapsed && "lg:justify-center lg:px-0",
+                        )}
+                      >
+                        {Icon && <Icon size={16} strokeWidth={1.6} className="shrink-0" />}
+                        <span className={clsx("truncate tracking-[0.005em]", collapsed && "lg:hidden")}>{item.label}</span>
+                      </Link>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          ))}
         </nav>
 
         <div className="border-t border-white/[0.08] p-3">

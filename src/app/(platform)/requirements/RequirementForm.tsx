@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { SubmitButton } from "@/components/SubmitButton";
 import { PROPERTY_SUBTYPES, FEATURE_FIELDS_BY_SUBTYPE, DEFAULT_FEATURES, ALL_CITIES, ALL_DISTRICTS } from "@/lib/locations";
 import { titleCase } from "@/lib/format";
 
@@ -124,7 +125,7 @@ export function RequirementForm({
       </Section>
 
       <div className="flex justify-end gap-2 pt-2">
-        <button type="submit" className="ir-btn ir-btn-primary px-6 py-2.5">{submitLabel}</button>
+        <SubmitButton className="ir-btn ir-btn-primary px-6 py-2.5">{submitLabel}</SubmitButton>
       </div>
     </form>
   );

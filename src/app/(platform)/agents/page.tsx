@@ -2,7 +2,7 @@ import Link from "next/link";
 import { Plus, UserPlus, Building2, ClipboardList, Kanban } from "lucide-react";
 import { requireUser, canSeeConfidential } from "@/lib/auth";
 import { getAgentRoster } from "@/lib/queries/agents";
-import { PageHeader, Badge } from "@/components/ui";
+import { PageHeader, Badge, EmptyState } from "@/components/ui";
 import { WhatsAppButton } from "@/components/WhatsAppButton";
 import { ClickableCard } from "@/components/ClickableCard";
 import { ROLE_LABELS } from "@/lib/roles";
@@ -36,6 +36,15 @@ export default async function AgentsPage() {
         <h2 className="ir-label !text-ir-navy/70">Internal team</h2>
         <div className="h-px flex-1 bg-black/[0.06]" />
       </div>
+      {internal.length === 0 ? (
+        <div className="mb-9">
+          <EmptyState
+            title="No internal agents yet"
+            description="Add the first person on the team to start assigning properties, requirements and deals."
+            action={canManage ? <Link href="/agents/new" className="ir-btn ir-btn-gold"><Plus size={15} /> Add internal agent</Link> : undefined}
+          />
+        </div>
+      ) : (
       <div className="mb-9 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         {internal.map((a) => {
           const collaborating = a._count.collaboratingProperties + a._count.collaboratingRequirements + a._count.collaboratingDeals;
@@ -65,6 +74,7 @@ export default async function AgentsPage() {
           );
         })}
       </div>
+      )}
 
       <div className="mb-3 flex items-center gap-2.5">
         <h2 className="ir-label !text-ir-navy/70">External partners</h2>

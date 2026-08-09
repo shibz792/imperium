@@ -4,6 +4,7 @@ import { logoutAction } from "@/app/login/actions";
 import { requireUser } from "@/lib/auth";
 import { MobileMenuButton } from "@/components/MobileMenuButton";
 import { NotificationBell } from "@/components/NotificationBell";
+import { GlobalSearch } from "@/components/GlobalSearch";
 import { getNotificationSummary } from "@/lib/queries/notifications";
 
 // Navy, matching the sidebar — together they frame the ivory canvas in an
@@ -28,6 +29,8 @@ export async function Topbar() {
           <Sparkles size={14} />
           <span className="hidden sm:inline">AI Intake</span>
         </Link>
+
+        <GlobalSearch />
 
         <Link href="/tasks" title="Tasks" aria-label="Tasks" className="flex h-8 w-8 items-center justify-center rounded-full text-white/70 hover:bg-white/10 hover:text-white">
           <ListTodo size={16} />

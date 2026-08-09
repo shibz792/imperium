@@ -4,6 +4,7 @@ import { PageHeader, Badge, SectionCard, Tabs } from "@/components/ui";
 import { formatDateTime, titleCase } from "@/lib/format";
 import { SRI_LANKA_GEOGRAPHY, PROPERTY_SUBTYPES } from "@/lib/locations";
 import { DEFAULT_AGENCY_FEE_PCT } from "@/lib/commission";
+import { SubmitButton } from "@/components/SubmitButton";
 import { createUser, toggleUserActive, setCommissionRateRule } from "./actions";
 
 const ROLES = ["SUPER_ADMIN", "DIRECTOR", "SALES_MANAGER", "AGENT", "MARKETING", "LEGAL", "FINANCE", "EXTERNAL_BROKER", "OWNER_PORTAL", "CLIENT_PORTAL"];
@@ -55,7 +56,7 @@ async function UsersTab() {
             <label className="ir-label mb-1 block">Password</label>
             <input name="password" type="text" placeholder="Imperium@123" className="ir-input" />
           </div>
-          <button type="submit" className="ir-btn ir-btn-primary w-full justify-center">Create user</button>
+          <SubmitButton className="ir-btn ir-btn-primary w-full justify-center">Create user</SubmitButton>
         </form>
       </SectionCard>
 

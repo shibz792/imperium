@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { PageHeader } from "@/components/ui";
+import { SubmitButton } from "@/components/SubmitButton";
 import { scheduleViewing } from "../actions";
 
 export default async function NewViewingPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
@@ -42,7 +43,7 @@ export default async function NewViewingPage({ searchParams }: { searchParams: P
           </div>
         </div>
         <div className="flex justify-end pt-2">
-          <button type="submit" className="ir-btn ir-btn-primary px-6 py-2.5">Schedule</button>
+          <SubmitButton className="ir-btn ir-btn-primary px-6 py-2.5" pendingText="Scheduling…">Schedule</SubmitButton>
         </div>
       </form>
     </div>

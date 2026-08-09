@@ -1,5 +1,5 @@
 import { requireRole } from "@/lib/auth";
-import { PageHeader, StatTile, SectionCard, Badge } from "@/components/ui";
+import { PageHeader, StatTile, SectionCard, Badge, EmptyState } from "@/components/ui";
 import { getAnalyticsData } from "@/lib/queries/analytics";
 import { formatCurrency, titleCase } from "@/lib/format";
 import { FunnelChart, AgentPerformanceChart } from "@/components/charts/AnalyticsCharts";
@@ -83,33 +83,41 @@ export default async function AnalyticsPage() {
         </SectionCard>
 
         <SectionCard title="Agent performance">
-          <AgentPerformanceChart data={data.agentPerformance} />
+          {data.agentPerformance.length === 0 ? (
+            <EmptyState title="No agent activity yet" description="Once deals are assigned and worked, performance shows up here." />
+          ) : (
+            <AgentPerformanceChart data={data.agentPerformance} />
+          )}
         </SectionCard>
       </div>
 
       <SectionCard title="Commission by agent">
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[500px] text-left text-sm">
-            <thead>
-              <tr className="border-b border-black/8 text-[0.7rem] uppercase tracking-wide text-black/40">
-                <th className="py-2 pr-3 font-medium">Agent</th>
-                <th className="px-3 py-2 font-medium">Open deals</th>
-                <th className="px-3 py-2 font-medium">Closed won</th>
-                <th className="px-3 py-2 font-medium">Commission earned</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.agentPerformance.map((a) => (
-                <tr key={a.name} className="border-b border-black/6 last:border-0">
-                  <td className="py-2.5 pr-3 font-medium text-ir-navy">{a.name}</td>
-                  <td className="px-3 py-2.5 text-black/60">{a.dealsOpen}</td>
-                  <td className="px-3 py-2.5 text-black/60">{a.dealsWon}</td>
-                  <td className="px-3 py-2.5 text-black/70">{formatCurrency(a.commissionEarned)}</td>
+        {data.agentPerformance.length === 0 ? (
+          <EmptyState title="Nothing to report yet" description="Commission per agent appears once a deal closes." />
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[500px] text-left text-sm">
+              <thead>
+                <tr className="border-b border-black/8 text-[0.7rem] uppercase tracking-wide text-black/40">
+                  <th className="py-2 pr-3 font-medium">Agent</th>
+                  <th className="px-3 py-2 font-medium">Open deals</th>
+                  <th className="px-3 py-2 font-medium">Closed won</th>
+                  <th className="px-3 py-2 font-medium">Commission earned</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {data.agentPerformance.map((a) => (
+                  <tr key={a.name} className="border-b border-black/6 last:border-0">
+                    <td className="py-2.5 pr-3 font-medium text-ir-navy">{a.name}</td>
+                    <td className="px-3 py-2.5 text-black/60">{a.dealsOpen}</td>
+                    <td className="px-3 py-2.5 text-black/60">{a.dealsWon}</td>
+                    <td className="px-3 py-2.5 text-black/70">{formatCurrency(a.commissionEarned)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </SectionCard>
     </div>
   );

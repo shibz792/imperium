@@ -5,6 +5,8 @@ import { requireUser } from "@/lib/auth";
 import { PageHeader, EmptyState } from "@/components/ui";
 import { formatDateTime } from "@/lib/format";
 import { createNote, deleteNote } from "./actions";
+import { ConfirmSubmitButton } from "@/components/ConfirmSubmitButton";
+import { SubmitButton } from "@/components/SubmitButton";
 
 const CAN_DELETE_ANY = ["SUPER_ADMIN", "DIRECTOR", "SALES_MANAGER"];
 
@@ -38,9 +40,7 @@ export default async function NotesPage() {
               ))}
             </select>
           </div>
-          <button type="submit" className="ir-btn ir-btn-primary ml-auto self-end">
-            Add note
-          </button>
+          <SubmitButton className="ir-btn ir-btn-primary ml-auto self-end">Add note</SubmitButton>
         </div>
       </form>
 
@@ -64,9 +64,9 @@ export default async function NotesPage() {
                 </div>
                 {(n.authorId === user.id || CAN_DELETE_ANY.includes(user.role)) && (
                   <form action={deleteNote.bind(null, n.id)}>
-                    <button type="submit" title="Delete note" className="flex h-6 w-6 items-center justify-center rounded text-black/25 hover:bg-black/[0.05] hover:text-[color:var(--color-brick)]">
+                    <ConfirmSubmitButton confirmMessage="Delete this note? This can't be undone." title="Delete note" className="flex h-6 w-6 items-center justify-center rounded text-black/25 hover:bg-black/[0.05] hover:text-[color:var(--color-brick)]">
                       <Trash2 size={13} />
-                    </button>
+                    </ConfirmSubmitButton>
                   </form>
                 )}
               </div>

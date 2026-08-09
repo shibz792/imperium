@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { PROPERTY_SUBTYPES, FEATURE_FIELDS_BY_SUBTYPE, DEFAULT_FEATURES, ALL_DISTRICTS, ALL_CITIES, districtForCity } from "@/lib/locations";
 import { titleCase, formatCurrency } from "@/lib/format";
+import { SubmitButton } from "@/components/SubmitButton";
 import { applyMarkup } from "@/lib/property";
 
 type Owner = { id: string; name: string; phone: string };
@@ -229,9 +230,7 @@ export function PropertyForm({
       </Section>
 
       <div className="flex justify-end gap-2 pt-2">
-        <button type="submit" className="ir-btn ir-btn-primary px-6 py-2.5">
-          {submitLabel}
-        </button>
+        <SubmitButton className="ir-btn ir-btn-primary px-6 py-2.5">{submitLabel}</SubmitButton>
       </div>
     </form>
   );

@@ -5,6 +5,8 @@ import { requireUser } from "@/lib/auth";
 import { PageHeader, EmptyState } from "@/components/ui";
 import { formatDateTime } from "@/lib/format";
 import { createTask, setTaskStatus, deleteTask } from "./actions";
+import { ConfirmSubmitButton } from "@/components/ConfirmSubmitButton";
+import { SubmitButton } from "@/components/SubmitButton";
 
 const TYPE_LABELS: Record<string, string> = {
   CONTACT_INQUIRY: "Contact inquiry",
@@ -83,7 +85,7 @@ export default async function TasksPage() {
             </optgroup>
           </select>
         </div>
-        <button type="submit" className="ir-btn ir-btn-primary self-end">Add task</button>
+        <SubmitButton className="ir-btn ir-btn-primary self-end">Add task</SubmitButton>
       </form>
 
       {tasks.length === 0 ? (
@@ -170,9 +172,9 @@ function TaskRow({
 
       {canDelete && (
         <form action={deleteTask.bind(null, task.id)}>
-          <button type="submit" title="Delete task" className="flex h-7 w-7 shrink-0 items-center justify-center rounded text-black/25 hover:bg-black/[0.05] hover:text-[color:var(--color-brick)]">
+          <ConfirmSubmitButton confirmMessage="Delete this task? This can't be undone." title="Delete task" className="flex h-7 w-7 shrink-0 items-center justify-center rounded text-black/25 hover:bg-black/[0.05] hover:text-[color:var(--color-brick)]">
             <Trash2 size={13} />
-          </button>
+          </ConfirmSubmitButton>
         </form>
       )}
     </div>

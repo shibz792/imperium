@@ -15,6 +15,8 @@ import { PropertyPhotoUploader } from "../PropertyPhotoUploader";
 import { GoogleDriveBrowser } from "@/components/GoogleDriveBrowser";
 import { createNote, deleteNote } from "../../notes/actions";
 import { createTask, setTaskStatus, deleteTask } from "../../tasks/actions";
+import { ConfirmSubmitButton } from "@/components/ConfirmSubmitButton";
+import { SubmitButton } from "@/components/SubmitButton";
 
 const CAN_DELETE_ANY_NOTE = ["SUPER_ADMIN", "DIRECTOR", "SALES_MANAGER"];
 
@@ -267,9 +269,9 @@ export default async function PropertyDetailPage({ params, searchParams }: { par
                     )}
                     {isAdmin(user) && (
                       <form action={deletePropertyMedia.bind(null, id, m.id)}>
-                        <button type="submit" title="Delete photo" className="flex h-7 w-7 items-center justify-center rounded-full bg-black/40 text-white hover:bg-[color:var(--color-brick)]">
+                        <ConfirmSubmitButton confirmMessage="Delete this photo? It'll be moved to the Drive trash, but removed from here immediately." title="Delete photo" className="flex h-7 w-7 items-center justify-center rounded-full bg-black/40 text-white hover:bg-[color:var(--color-brick)]">
                           <Trash2 size={13} />
-                        </button>
+                        </ConfirmSubmitButton>
                       </form>
                     )}
                   </div>
@@ -498,7 +500,7 @@ export default async function PropertyDetailPage({ params, searchParams }: { par
                 ))}
               </select>
             </div>
-            <button type="submit" className="ir-btn ir-btn-primary">Add task</button>
+            <SubmitButton className="ir-btn ir-btn-primary">Add task</SubmitButton>
           </form>
           {tasks.length === 0 ? (
             <EmptyState title="No tasks on this property yet" />
@@ -522,9 +524,9 @@ export default async function PropertyDetailPage({ params, searchParams }: { par
                       </div>
                     </div>
                     <form action={deleteTask.bind(null, t.id)}>
-                      <button type="submit" title="Delete task" className="text-black/25 hover:text-[color:var(--color-brick)]">
+                      <ConfirmSubmitButton confirmMessage="Delete this task? This can't be undone." title="Delete task" className="text-black/25 hover:text-[color:var(--color-brick)]">
                         <Trash2 size={13} />
-                      </button>
+                      </ConfirmSubmitButton>
                     </form>
                   </li>
                 );
@@ -539,9 +541,7 @@ export default async function PropertyDetailPage({ params, searchParams }: { par
           <form action={createNote} className="mb-4">
             <input type="hidden" name="propertyId" value={id} />
             <textarea name="content" required rows={2} placeholder="Type a note about this property…" className="ir-input" />
-            <button type="submit" className="ir-btn ir-btn-primary mt-2">
-              Add note
-            </button>
+            <SubmitButton className="ir-btn ir-btn-primary mt-2">Add note</SubmitButton>
           </form>
           {property.notes.length === 0 ? (
             <EmptyState title="No notes on this property yet" />
@@ -556,9 +556,9 @@ export default async function PropertyDetailPage({ params, searchParams }: { par
                     </span>
                     {(n.authorId === user.id || CAN_DELETE_ANY_NOTE.includes(user.role)) && (
                       <form action={deleteNote.bind(null, n.id)}>
-                        <button type="submit" title="Delete note" className="text-black/25 hover:text-[color:var(--color-brick)]">
+                        <ConfirmSubmitButton confirmMessage="Delete this note? This can't be undone." title="Delete note" className="text-black/25 hover:text-[color:var(--color-brick)]">
                           <Trash2 size={13} />
-                        </button>
+                        </ConfirmSubmitButton>
                       </form>
                     )}
                   </div>

@@ -12,6 +12,8 @@ import { formatCurrency, formatDate, formatDateTime, titleCase, daysAgo } from "
 import { scoreMatch, explainMatch } from "@/lib/match";
 import { reconfirmRequirement, changeRequirementStatus } from "../actions";
 import { createTask, setTaskStatus, deleteTask } from "../../tasks/actions";
+import { ConfirmSubmitButton } from "@/components/ConfirmSubmitButton";
+import { SubmitButton } from "@/components/SubmitButton";
 
 const TABS = [
   { key: "overview", label: "Overview" },
@@ -266,7 +268,7 @@ export default async function RequirementDetailPage({ params, searchParams }: { 
                 ))}
               </select>
             </div>
-            <button type="submit" className="ir-btn ir-btn-primary">Add task</button>
+            <SubmitButton className="ir-btn ir-btn-primary">Add task</SubmitButton>
           </form>
           {tasks.length === 0 ? (
             <EmptyState title="No tasks on this requirement yet" />
@@ -290,9 +292,9 @@ export default async function RequirementDetailPage({ params, searchParams }: { 
                       </div>
                     </div>
                     <form action={deleteTask.bind(null, t.id)}>
-                      <button type="submit" title="Delete task" className="text-black/25 hover:text-[color:var(--color-brick)]">
+                      <ConfirmSubmitButton confirmMessage="Delete this task? This can't be undone." title="Delete task" className="text-black/25 hover:text-[color:var(--color-brick)]">
                         <Trash2 size={13} />
-                      </button>
+                      </ConfirmSubmitButton>
                     </form>
                   </li>
                 );

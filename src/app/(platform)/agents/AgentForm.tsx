@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { ALL_DISTRICTS } from "@/lib/locations";
+import { SubmitButton } from "@/components/SubmitButton";
 
 export function AgentForm({
   action,
@@ -82,7 +83,7 @@ export function AgentForm({
         <textarea name="bio" rows={3} defaultValue={initial?.bio as string} className="ir-input" placeholder="A short introduction shown on this agent's public profile." />
       </Field>
       <div className="flex justify-end pt-2">
-        <button type="submit" className="ir-btn ir-btn-primary px-6 py-2.5">{submitLabel}</button>
+        <SubmitButton className="ir-btn ir-btn-primary px-6 py-2.5">{submitLabel}</SubmitButton>
       </div>
     </form>
   );

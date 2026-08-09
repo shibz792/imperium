@@ -4,6 +4,7 @@ import { PageHeader, Badge, EmptyState } from "@/components/ui";
 import { formatDate, titleCase } from "@/lib/format";
 import { uploadDocument, importDocumentsFromDrive } from "./actions";
 import { GoogleDriveBrowser } from "@/components/GoogleDriveBrowser";
+import { SubmitButton } from "@/components/SubmitButton";
 import { Lock, Download } from "lucide-react";
 
 const CATEGORIES = ["DEED", "SURVEY_PLAN", "COC", "APPROVED_PLAN", "MUNICIPAL", "TAX", "AGREEMENT", "IDENTIFICATION", "OTHER"];
@@ -61,7 +62,7 @@ export default async function DocumentsPage() {
           <label htmlFor="confidential" className="text-sm text-ir-navy">Confidential (restricted download)</label>
         </div>
         <div className="flex items-end lg:col-span-4">
-          <button type="submit" className="ir-btn ir-btn-primary ml-auto px-6">Upload</button>
+          <SubmitButton className="ir-btn ir-btn-primary ml-auto px-6" pendingText="Uploading…">Upload</SubmitButton>
         </div>
       </form>
 
