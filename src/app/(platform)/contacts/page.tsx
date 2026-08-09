@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { Plus } from "lucide-react";
 import { prisma } from "@/lib/prisma";
-import { requireUser, canSeeConfidential } from "@/lib/auth";
+import { requireRole, canSeeConfidential } from "@/lib/auth";
+import { SALES_TEAM_ROLES } from "@/lib/roles";
 import { PageHeader, Badge, EmptyState } from "@/components/ui";
 import { ClickableRow } from "@/components/ClickableRow";
 import { WhatsAppButton } from "@/components/WhatsAppButton";
@@ -14,7 +15,7 @@ const TYPE_TONE: Record<string, string> = { OWNER: "gold", BUYER: "blue", TENANT
 
 export default async function ContactsPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   const sp = await searchParams;
-  const user = await requireUser();
+  const user = await requireRole(SALES_TEAM_ROLES);
   const showConfidential = canSeeConfidential(user);
 
   const where: Prisma.ContactWhereInput = {};

@@ -1,9 +1,12 @@
 import { prisma } from "@/lib/prisma";
+import { requireRole } from "@/lib/auth";
+import { VIEWING_MATCH_ROLES } from "@/lib/roles";
 import { PageHeader } from "@/components/ui";
 import { SubmitButton } from "@/components/SubmitButton";
 import { scheduleViewing } from "../actions";
 
 export default async function NewViewingPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
+  await requireRole(VIEWING_MATCH_ROLES);
   const sp = await searchParams;
   const [properties, contacts, agents] = await Promise.all([
     prisma.property.findMany({ orderBy: { title: "asc" } }),

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Plus, UserPlus, Building2, ClipboardList, Kanban } from "lucide-react";
-import { requireUser, canSeeConfidential } from "@/lib/auth";
+import { requireRole, canSeeConfidential } from "@/lib/auth";
+import { SALES_TEAM_ROLES } from "@/lib/roles";
 import { getAgentRoster } from "@/lib/queries/agents";
 import { PageHeader, Badge, EmptyState } from "@/components/ui";
 import { WhatsAppButton } from "@/components/WhatsAppButton";
@@ -11,7 +12,7 @@ import { initials } from "@/lib/format";
 const MANAGE_ROLES = ["SUPER_ADMIN", "DIRECTOR", "SALES_MANAGER"];
 
 export default async function AgentsPage() {
-  const user = await requireUser();
+  const user = await requireRole(SALES_TEAM_ROLES);
   const showConfidential = canSeeConfidential(user);
   const { internal, external } = await getAgentRoster();
   const canManage = MANAGE_ROLES.includes(user.role);

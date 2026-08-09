@@ -1,10 +1,13 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import { requireRole } from "@/lib/auth";
+import { SALES_TEAM_ROLES } from "@/lib/roles";
 import { PageHeader } from "@/components/ui";
 import { RequirementForm } from "../../RequirementForm";
 import { updateRequirement } from "../../actions";
 
 export default async function EditRequirementPage({ params }: { params: Promise<{ id: string }> }) {
+  await requireRole(SALES_TEAM_ROLES);
   const { id } = await params;
   const [requirement, clients, agents] = await Promise.all([
     prisma.requirement.findUnique({ where: { id }, include: { collaborators: true } }),

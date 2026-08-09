@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
-import { canSeeConfidential, requireUser } from "@/lib/auth";
+import { canSeeConfidential, requireRole } from "@/lib/auth";
+import { DOCUMENT_ROLES } from "@/lib/roles";
 import { PageHeader, Badge, EmptyState } from "@/components/ui";
 import { formatDate, titleCase } from "@/lib/format";
 import { uploadDocument, importDocumentsFromDrive } from "./actions";
@@ -10,7 +11,7 @@ import { Lock, Download } from "lucide-react";
 const CATEGORIES = ["DEED", "SURVEY_PLAN", "COC", "APPROVED_PLAN", "MUNICIPAL", "TAX", "AGREEMENT", "IDENTIFICATION", "OTHER"];
 
 export default async function DocumentsPage() {
-  const user = await requireUser();
+  const user = await requireRole(DOCUMENT_ROLES);
   const showConfidential = canSeeConfidential(user);
 
   const [documents, properties, contacts] = await Promise.all([

@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { Plus } from "lucide-react";
 import { prisma } from "@/lib/prisma";
+import { requireRole } from "@/lib/auth";
+import { SALES_TEAM_ROLES } from "@/lib/roles";
 import { PageHeader, Badge, EmptyState } from "@/components/ui";
 import { REQUIREMENT_STATUS_TONE, URGENCY_TONE } from "@/lib/badges";
 import { formatCurrency, formatDate, titleCase, daysAgoDate } from "@/lib/format";
@@ -13,6 +15,7 @@ import { whatsAppMessageForRequirement } from "@/lib/property";
 import type { Prisma } from "@/generated/prisma/client";
 
 export default async function RequirementsPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
+  await requireRole(SALES_TEAM_ROLES);
   const sp = await searchParams;
   const where: Prisma.RequirementWhereInput = {};
   if (sp.category) where.category = sp.category as never;

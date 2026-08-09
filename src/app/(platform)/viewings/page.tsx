@@ -1,12 +1,15 @@
 import Link from "next/link";
 import { Plus, TriangleAlert } from "lucide-react";
 import { prisma } from "@/lib/prisma";
+import { requireRole } from "@/lib/auth";
+import { VIEWING_MATCH_ROLES } from "@/lib/roles";
 import { PageHeader, Badge, EmptyState } from "@/components/ui";
 import { VIEWING_STATUS_TONE } from "@/lib/badges";
 import { formatDateTime, titleCase } from "@/lib/format";
 import { updateViewingStatus, submitFeedback } from "./actions";
 
 export default async function ViewingsPage({ searchParams }: { searchParams: Promise<{ conflict?: string }> }) {
+  await requireRole(VIEWING_MATCH_ROLES);
   const sp = await searchParams;
   const viewings = await prisma.viewing.findMany({
     include: { property: true, contact: true, agent: true },

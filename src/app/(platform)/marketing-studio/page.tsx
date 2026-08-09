@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
-import { requireUser } from "@/lib/auth";
+import { requireRole } from "@/lib/auth";
+import { MARKETING_STUDIO_ROLES } from "@/lib/roles";
 import { groqConfigured } from "@/lib/groq";
 import { PageHeader, Badge, EmptyState } from "@/components/ui";
 import { CONTENT_TYPE_LABELS } from "@/lib/marketing";
@@ -7,7 +8,7 @@ import { MarketingStudioClient } from "./MarketingStudioClient";
 import { approveAsset } from "./actions";
 
 export default async function MarketingStudioPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
-  await requireUser();
+  await requireRole(MARKETING_STUDIO_ROLES);
   const sp = await searchParams;
   const properties = await prisma.property.findMany({ orderBy: { title: "asc" }, select: { id: true, title: true, propertyRef: true } });
   const orderedProperties = sp.propertyId ? [...properties].sort((a, b) => (a.id === sp.propertyId ? -1 : b.id === sp.propertyId ? 1 : 0)) : properties;

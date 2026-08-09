@@ -1,9 +1,10 @@
-import { requireUser } from "@/lib/auth";
+import { requireRole } from "@/lib/auth";
+import { SOURCING_ROLES } from "@/lib/roles";
 import { PageHeader } from "@/components/ui";
 import { SourcingClient } from "./SourcingClient";
 
 export default async function SourcingPage() {
-  await requireUser();
+  await requireRole(SOURCING_ROLES);
 
   return (
     <div>

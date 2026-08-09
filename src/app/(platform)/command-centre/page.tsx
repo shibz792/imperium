@@ -1,33 +1,40 @@
 import Link from "next/link";
-import { CalendarClock, CheckCircle2, ClipboardList, FileWarning, Radar, TrendingUp } from "lucide-react";
+import { CalendarClock, CheckCircle2, ClipboardList, FileWarning, Radar, TrendingUp, ShieldAlert } from "lucide-react";
 import { Badge, EmptyState } from "@/components/ui";
 import { GridPattern } from "@/components/GridPattern";
 import { getDashboardData } from "@/lib/queries/dashboard";
 import { requireUser, canSeeFinance } from "@/lib/auth";
+import { SALES_TEAM_ROLES, DEAL_ROLES, VIEWING_MATCH_ROLES } from "@/lib/roles";
 import { formatCurrency, formatDate, formatDateTime, daysAgo as daysAgoFn } from "@/lib/format";
 import { VIEWING_STATUS_TONE } from "@/lib/badges";
 
-export default async function CommandCentrePage() {
+export default async function CommandCentrePage({ searchParams }: { searchParams: Promise<{ denied?: string }> }) {
   const user = await requireUser();
+  const sp = await searchParams;
   const data = await getDashboardData();
   const showFinance = canSeeFinance(user);
+  const canSeeRequirements = SALES_TEAM_ROLES.includes(user.role);
+  const canSeeDeals = DEAL_ROLES.includes(user.role);
+  const canSeeMatches = VIEWING_MATCH_ROLES.includes(user.role);
 
-  const ledgerStats = showFinance
-    ? [
-        { label: "New properties (7d)", value: data.newProperties, href: "/properties" },
-        { label: "New requirements (7d)", value: data.newRequirements, href: "/requirements" },
-        { label: "Matches awaiting review", value: data.matchesAwaitingReview, accent: true, href: "/matchmaker" },
-        { label: "Open deals", value: data.openDealsCount, href: "/deals" },
-      ]
-    : [
-        { label: "New properties (7d)", value: data.newProperties, href: "/properties" },
-        { label: "New requirements (7d)", value: data.newRequirements, href: "/requirements" },
-        { label: "Stale listings", value: data.staleListings.length, href: "/properties?stale=1" },
-        { label: "Offers awaiting action", value: data.pendingOffers.length, href: "/deals" },
-      ];
+  // Every stat here doubles as a link — only show one a role can actually
+  // open, rather than a dead end that bounces back here with "denied=1".
+  const ledgerStats = [
+    { label: "New properties (7d)", value: data.newProperties, href: "/properties" },
+    canSeeRequirements && { label: "New requirements (7d)", value: data.newRequirements, href: "/requirements" },
+    showFinance && canSeeMatches && { label: "Matches awaiting review", value: data.matchesAwaitingReview, accent: true, href: "/matchmaker" },
+    showFinance && canSeeDeals && { label: "Open deals", value: data.openDealsCount, href: "/deals" },
+    !showFinance && { label: "Stale listings", value: data.staleListings.length, href: "/properties?stale=1" },
+    !showFinance && canSeeDeals && { label: "Offers awaiting action", value: data.pendingOffers.length, href: "/deals" },
+  ].filter((s): s is { label: string; value: number; href: string; accent?: boolean } => Boolean(s));
 
   return (
     <div>
+      {sp.denied === "1" && (
+        <div className="mb-5 flex items-center gap-2 rounded border border-[#92601f4d] bg-[color:var(--color-bronze-tint)] px-4 py-2.5 text-sm text-[color:var(--color-bronze)]">
+          <ShieldAlert size={15} className="shrink-0" /> That page isn&apos;t available for your role.
+        </div>
+      )}
       {/* Hero — the one dark, high-drama moment on this page. Everything
           below is quiet by comparison; see README §6. */}
       <div className="relative mb-5 overflow-hidden rounded-[3px] bg-ir-navy px-7 py-9 sm:px-10">
@@ -70,6 +77,7 @@ export default async function CommandCentrePage() {
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
         {/* Today's tasks */}
+        {canSeeRequirements && (
         <section className="ir-card p-5 lg:col-span-1">
           <div className="mb-3 flex items-center justify-between">
             <h2 className="flex items-center gap-2 ir-label !text-ir-navy/70">
@@ -107,12 +115,14 @@ export default async function CommandCentrePage() {
               })}
             </ul>
           )}
-          <Link href="/deals" className="mt-4 inline-block text-xs font-medium text-ir-gold-dark hover:underline">
+          <Link href="/tasks" className="mt-4 inline-block text-xs font-medium text-ir-gold-dark hover:underline">
             View full task list →
           </Link>
         </section>
+        )}
 
         {/* Upcoming viewings */}
+        {canSeeMatches && (
         <section className="ir-card p-5 lg:col-span-1">
           <div className="mb-3 flex items-center justify-between">
             <h2 className="flex items-center gap-2 ir-label !text-ir-navy/70">
@@ -143,8 +153,10 @@ export default async function CommandCentrePage() {
             View all viewings →
           </Link>
         </section>
+        )}
 
         {/* Offers awaiting action */}
+        {canSeeDeals && (
         <section className="ir-card p-5 lg:col-span-1">
           <div className="mb-3 flex items-center justify-between">
             <h2 className="flex items-center gap-2 ir-label !text-ir-navy/70">
@@ -175,6 +187,7 @@ export default async function CommandCentrePage() {
             Go to pipeline →
           </Link>
         </section>
+        )}
       </div>
 
       <div className="mt-5 grid grid-cols-1 gap-5 lg:grid-cols-3">

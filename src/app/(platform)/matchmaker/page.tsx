@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { MessageCircle, Globe } from "lucide-react";
 import { prisma } from "@/lib/prisma";
+import { requireRole } from "@/lib/auth";
+import { VIEWING_MATCH_ROLES } from "@/lib/roles";
 import { PageHeader, Badge, EmptyState } from "@/components/ui";
 import { scoreMatch } from "@/lib/match";
 import { formatCurrency, titleCase } from "@/lib/format";
@@ -10,6 +12,7 @@ import { SourcingClient } from "../sourcing/SourcingClient";
 import { shareMatch } from "./actions";
 
 export default async function MatchmakerPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
+  await requireRole(VIEWING_MATCH_ROLES);
   const sp = await searchParams;
   const mode = sp.mode === "requirement" ? "requirement" : "property";
 

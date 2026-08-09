@@ -2,7 +2,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Pencil, RefreshCcw, Trash2, CheckCircle2, Circle } from "lucide-react";
 import { prisma } from "@/lib/prisma";
-import { requireUser, canSeeConfidential } from "@/lib/auth";
+import { requireRole, canSeeConfidential } from "@/lib/auth";
+import { SALES_TEAM_ROLES } from "@/lib/roles";
 import { Badge, Field, PageHeader, SectionCard, Tabs, EmptyState } from "@/components/ui";
 import { WhatsAppButton } from "@/components/WhatsAppButton";
 import { CopyableMessage } from "@/components/CopyableMessage";
@@ -26,7 +27,7 @@ const TABS = [
 export default async function RequirementDetailPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ tab?: string }> }) {
   const { id } = await params;
   const { tab = "overview" } = await searchParams;
-  const user = await requireUser();
+  const user = await requireRole(SALES_TEAM_ROLES);
   const showConfidential = canSeeConfidential(user);
 
   const requirement = await prisma.requirement.findUnique({

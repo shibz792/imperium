@@ -1,10 +1,11 @@
-import { requireUser } from "@/lib/auth";
+import { requireRole } from "@/lib/auth";
+import { AI_INTAKE_ROLES } from "@/lib/roles";
 import { groqConfigured } from "@/lib/groq";
 import { PageHeader } from "@/components/ui";
 import { AiIntakeClient } from "./AiIntakeClient";
 
 export default async function AiIntakePage() {
-  await requireUser();
+  await requireRole(AI_INTAKE_ROLES);
 
   return (
     <div>

@@ -1,4 +1,6 @@
 import { prisma } from "@/lib/prisma";
+import { requireRole } from "@/lib/auth";
+import { SALES_TEAM_ROLES } from "@/lib/roles";
 import { PageHeader } from "@/components/ui";
 import { ContactForm } from "../ContactForm";
 import { createContact } from "../actions";
@@ -6,6 +8,7 @@ import { createContact } from "../actions";
 const VALID_TYPES = ["OWNER", "BUYER", "TENANT", "BROKER", "DEVELOPER", "INVESTOR", "CORPORATE"];
 
 export default async function NewContactPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
+  await requireRole(SALES_TEAM_ROLES);
   const sp = await searchParams;
   const agents = await prisma.user.findMany({ where: { role: { in: ["AGENT", "SALES_MANAGER", "DIRECTOR", "SUPER_ADMIN"] }, active: true }, orderBy: { name: "asc" } });
   const prefillType = sp.type && VALID_TYPES.includes(sp.type) ? sp.type : undefined;

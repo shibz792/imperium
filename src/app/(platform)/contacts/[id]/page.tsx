@@ -2,7 +2,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Pencil } from "lucide-react";
 import { prisma } from "@/lib/prisma";
-import { requireUser, canSeeConfidential } from "@/lib/auth";
+import { requireRole, canSeeConfidential } from "@/lib/auth";
+import { SALES_TEAM_ROLES } from "@/lib/roles";
 import { Badge, Field, PageHeader, SectionCard, EmptyState } from "@/components/ui";
 import { WhatsAppButton } from "@/components/WhatsAppButton";
 import { LISTING_STATUS_TONE, REQUIREMENT_STATUS_TONE, DEAL_STAGE_TONE } from "@/lib/badges";
@@ -10,7 +11,7 @@ import { formatCurrency, formatDate, titleCase } from "@/lib/format";
 
 export default async function ContactDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const user = await requireUser();
+  const user = await requireRole(SALES_TEAM_ROLES);
   const showConfidential = canSeeConfidential(user);
 
   const contact = await prisma.contact.findUnique({

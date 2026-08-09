@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { CheckCircle2, Circle, Trash2, Building2, ClipboardList } from "lucide-react";
 import { prisma } from "@/lib/prisma";
-import { requireUser } from "@/lib/auth";
+import { requireRole } from "@/lib/auth";
+import { SALES_TEAM_ROLES } from "@/lib/roles";
 import { PageHeader, EmptyState } from "@/components/ui";
 import { formatDateTime } from "@/lib/format";
 import { createTask, setTaskStatus, deleteTask } from "./actions";
@@ -23,7 +24,7 @@ const TYPE_LABELS: Record<string, string> = {
 const CAN_DELETE_ANY = ["SUPER_ADMIN", "DIRECTOR", "SALES_MANAGER"];
 
 export default async function TasksPage() {
-  const user = await requireUser();
+  const user = await requireRole(SALES_TEAM_ROLES);
   const [tasks, users, properties, requirements] = await Promise.all([
     prisma.task.findMany({ include: { assignedTo: true, createdBy: true }, orderBy: { dueAt: "asc" } }),
     prisma.user.findMany({ where: { active: true }, orderBy: { name: "asc" }, select: { id: true, name: true } }),

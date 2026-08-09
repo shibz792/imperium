@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
-import { requireUser, canSeeFinance, canSeeConfidential } from "@/lib/auth";
+import { requireRole, canSeeFinance, canSeeConfidential } from "@/lib/auth";
+import { DEAL_ROLES } from "@/lib/roles";
 import { Badge, Field, PageHeader, SectionCard, EmptyState } from "@/components/ui";
 import { WhatsAppButton } from "@/components/WhatsAppButton";
 import { DEAL_STAGE_TONE, OFFER_STATUS_TONE, VIEWING_STATUS_TONE, COMMISSION_STATUS_TONE } from "@/lib/badges";
@@ -12,7 +13,7 @@ import { companyAmount } from "@/lib/commission";
 
 export default async function DealDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const user = await requireUser();
+  const user = await requireRole(DEAL_ROLES);
   const showFinance = canSeeFinance(user);
   const showConfidential = canSeeConfidential(user);
 

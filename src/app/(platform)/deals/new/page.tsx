@@ -1,9 +1,12 @@
 import { prisma } from "@/lib/prisma";
+import { requireRole } from "@/lib/auth";
+import { DEAL_ROLES } from "@/lib/roles";
 import { PageHeader } from "@/components/ui";
 import { SubmitButton } from "@/components/SubmitButton";
 import { createDeal } from "../actions";
 
 export default async function NewDealPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
+  await requireRole(DEAL_ROLES);
   const sp = await searchParams;
   const [properties, contacts, requirements, agents] = await Promise.all([
     prisma.property.findMany({ orderBy: { title: "asc" } }),

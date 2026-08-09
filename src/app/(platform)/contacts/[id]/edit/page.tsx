@@ -1,10 +1,13 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import { requireRole } from "@/lib/auth";
+import { SALES_TEAM_ROLES } from "@/lib/roles";
 import { PageHeader } from "@/components/ui";
 import { ContactForm } from "../../ContactForm";
 import { updateContact } from "../../actions";
 
 export default async function EditContactPage({ params }: { params: Promise<{ id: string }> }) {
+  await requireRole(SALES_TEAM_ROLES);
   const { id } = await params;
   const [contact, agents] = await Promise.all([
     prisma.contact.findUnique({ where: { id } }),

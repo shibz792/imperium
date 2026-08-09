@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser, canSeeConfidential } from "@/lib/auth";
+import { DOCUMENT_ROLES } from "@/lib/roles";
 import { readStoredFile } from "@/lib/storage";
 import { writeAudit } from "@/lib/audit";
 
@@ -8,6 +9,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   const { id } = await params;
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+  if (!DOCUMENT_ROLES.includes(user.role)) return NextResponse.json({ error: "Not permitted." }, { status: 403 });
 
   const doc = await prisma.document.findUnique({ where: { id } });
   if (!doc) return NextResponse.json({ error: "Not found" }, { status: 404 });

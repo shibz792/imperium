@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { Plus } from "lucide-react";
 import { prisma } from "@/lib/prisma";
-import { canSeeFinance, requireUser } from "@/lib/auth";
+import { canSeeFinance, requireRole } from "@/lib/auth";
+import { DEAL_ROLES } from "@/lib/roles";
 import { PageHeader, Badge, EmptyState } from "@/components/ui";
 import { ClickableRow } from "@/components/ClickableRow";
 import { Pagination } from "@/components/Pagination";
@@ -26,7 +27,7 @@ const COLUMN_LABELS: Record<string, string> = {
 
 export default async function DealsPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   const sp = await searchParams;
-  const user = await requireUser();
+  const user = await requireRole(DEAL_ROLES);
   const view = sp.view === "list" ? "list" : "kanban";
 
   // Kanban buckets by stage and the header's pipeline value both need the

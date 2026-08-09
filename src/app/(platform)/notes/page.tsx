@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { Trash2, Building2 } from "lucide-react";
 import { prisma } from "@/lib/prisma";
-import { requireUser } from "@/lib/auth";
+import { requireRole } from "@/lib/auth";
+import { SALES_TEAM_ROLES } from "@/lib/roles";
 import { PageHeader, EmptyState } from "@/components/ui";
 import { formatDateTime } from "@/lib/format";
 import { createNote, deleteNote } from "./actions";
@@ -11,7 +12,7 @@ import { SubmitButton } from "@/components/SubmitButton";
 const CAN_DELETE_ANY = ["SUPER_ADMIN", "DIRECTOR", "SALES_MANAGER"];
 
 export default async function NotesPage() {
-  const user = await requireUser();
+  const user = await requireRole(SALES_TEAM_ROLES);
   const [notes, properties] = await Promise.all([
     prisma.note.findMany({ include: { author: true, property: true }, orderBy: { createdAt: "desc" }, take: 100 }),
     prisma.property.findMany({ orderBy: { title: "asc" }, select: { id: true, title: true, propertyRef: true } }),

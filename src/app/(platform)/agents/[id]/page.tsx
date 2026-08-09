@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Pencil } from "lucide-react";
-import { requireUser, canSeeFinance } from "@/lib/auth";
+import { requireRole, canSeeFinance } from "@/lib/auth";
+import { SALES_TEAM_ROLES } from "@/lib/roles";
 import { getAgentProfile } from "@/lib/queries/agents";
 import { Badge, SectionCard, EmptyState, StatTile } from "@/components/ui";
 import { LISTING_STATUS_TONE, REQUIREMENT_STATUS_TONE, DEAL_STAGE_TONE } from "@/lib/badges";
@@ -12,7 +13,7 @@ const MANAGE_ROLES = ["SUPER_ADMIN", "DIRECTOR", "SALES_MANAGER"];
 
 export default async function AgentProfilePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const viewer = await requireUser();
+  const viewer = await requireRole(SALES_TEAM_ROLES);
   const { user: agent, closedDeals, commissionEarned, openDeals } = await getAgentProfile(id);
   if (!agent) notFound();
 
