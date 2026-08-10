@@ -320,7 +320,17 @@ function CountryPicker({ code, onChange }: { code: string; onChange: (code: stri
               className="w-full text-xs outline-none placeholder:text-black/30"
             />
           </div>
-          <div className="max-h-64 overflow-y-auto py-1">
+          {/* It was already scrollable (confirmed: overflow-y:auto, wheel
+              events moved scrollTop correctly) — the actual problem was
+              that 256px happened to land almost exactly on a clean row
+              boundary, so nothing below the fold was visible even
+              partially. Combined with macOS/most browsers hiding the
+              scrollbar until you're actively scrolling, there was no cue
+              at all that ~190 more countries existed below. 215px
+              deliberately cuts a row off mid-way — a half-visible row is
+              a universal "there's more, scroll" signal that doesn't
+              depend on the scrollbar being visible. */}
+          <div className="max-h-[215px] overflow-y-auto overscroll-contain py-1">
             {filtered.length === 0 ? (
               <p className="px-3 py-3 text-center text-xs text-black/35">No match.</p>
             ) : (
