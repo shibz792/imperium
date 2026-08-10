@@ -34,6 +34,21 @@ function splitPhone(value?: string): { code: string; rest: string } {
   return { code: "+94", rest: v };
 }
 
+// Typing/pasting a number the way people actually write it — with the
+// country code already in it ("+94771234567"), or with the local trunk
+// prefix ("0771234567") — into what's meant to be just the local-number
+// box used to silently double up into a broken number ("+9494771234567").
+// This strips a redundant country code or leading 0 before combining,
+// rather than blindly concatenating whatever's in each box.
+function combinePhone(code: string, rest: string): string {
+  if (code === "OTHER") return rest.trim();
+  let digits = rest.replace(/\D/g, "");
+  const codeDigits = code.replace(/\D/g, "");
+  if (digits.startsWith(codeDigits)) digits = digits.slice(codeDigits.length);
+  else if (code === "+94" && digits.startsWith("0")) digits = digits.slice(1);
+  return `${code}${digits}`;
+}
+
 export function PhoneField({
   name,
   label,
@@ -50,22 +65,35 @@ export function PhoneField({
   const initial = splitPhone(defaultValue);
   const [code, setCode] = useState(initial.code);
   const [rest, setRest] = useState(initial.rest);
-  const combined = code === "OTHER" ? rest.trim() : `${code}${rest.replace(/\D/g, "")}`;
+  const combined = combinePhone(code, rest);
+
+  function handleRestChange(next: string) {
+    // Auto-detect a pasted/typed full international number ("+44 7911
+    // 123456") and switch the country selector to match, instead of
+    // combining it with whatever code happened to be selected before.
+    if (next.trim().startsWith("+") && code !== "OTHER") {
+      const detected = splitPhone(next);
+      setCode(detected.code);
+      setRest(detected.rest);
+      return;
+    }
+    setRest(next);
+  }
 
   return (
     <div className={className}>
       {label && <label className="ir-label mb-1 block">{label}</label>}
       <div className="flex gap-1.5">
-        <select value={code} onChange={(e) => setCode(e.target.value)} className="ir-select !w-[92px] shrink-0 !px-1.5 !text-xs" title="Country code">
+        <select value={code} onChange={(e) => setCode(e.target.value)} className="ir-select !w-[112px] shrink-0 !px-1.5 !text-xs" title="Country code">
           {COUNTRY_CODES.map((c) => (
-            <option key={c.code} value={c.code}>{c.code}</option>
+            <option key={c.code} value={c.code}>{c.label}</option>
           ))}
           <option value="OTHER">Other</option>
         </select>
         <input
           type="tel"
           value={rest}
-          onChange={(e) => setRest(e.target.value)}
+          onChange={(e) => handleRestChange(e.target.value)}
           placeholder={code === "OTHER" ? "+00 …" : "77 123 4567"}
           required={required}
           className="ir-input flex-1"
