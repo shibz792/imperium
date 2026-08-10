@@ -206,9 +206,9 @@ function ConfidencePill({ value }: { value: number }) {
   return <span className={`ir-badge ${tone}`}>{value}% confidence</span>;
 }
 
-function FieldRow({ label, confidence, children }: { label: string; confidence?: number; children: React.ReactNode }) {
+function FieldRow({ label, confidence, className = "", children }: { label: string; confidence?: number; className?: string; children: React.ReactNode }) {
   return (
-    <div>
+    <div className={className}>
       <div className="mb-1 flex items-center justify-between">
         <label className="ir-label">{label}</label>
         {confidence !== undefined && <span className="text-[0.65rem] text-black/35">{confidence}%</span>}
@@ -231,6 +231,9 @@ function PropertyFields({ fields, set, draft }: { fields: Record<string, unknown
       <FieldRow label="Owner phone" confidence={conf.ownerPhone}>
         <input className="ir-input !text-xs" value={(fields.ownerPhone as string) ?? ""} onChange={(e) => set("ownerPhone", e.target.value)} />
       </FieldRow>
+      <FieldRow label="Alternate phone" confidence={conf.alternatePhone}>
+        <input className="ir-input !text-xs" value={(fields.alternatePhone as string) ?? ""} onChange={(e) => set("alternatePhone", e.target.value)} />
+      </FieldRow>
       <FieldRow label="Category">
         <select className="ir-select !text-xs" value={(fields.category as string) ?? "RESIDENTIAL"} onChange={(e) => set("category", e.target.value)}>
           {Object.keys(PROPERTY_SUBTYPES).map((c) => <option key={c} value={c}>{titleCase(c)}</option>)}
@@ -247,8 +250,23 @@ function PropertyFields({ fields, set, draft }: { fields: Record<string, unknown
       <FieldRow label="City" confidence={conf.city}>
         <input className="ir-input !text-xs" value={(fields.city as string) ?? ""} onChange={(e) => set("city", e.target.value)} />
       </FieldRow>
+      <FieldRow label="Address" confidence={conf.address}>
+        <input className="ir-input !text-xs" value={(fields.address as string) ?? ""} onChange={(e) => set("address", e.target.value)} />
+      </FieldRow>
+      <FieldRow label="Landmark" confidence={conf.landmark}>
+        <input className="ir-input !text-xs" value={(fields.landmark as string) ?? ""} onChange={(e) => set("landmark", e.target.value)} />
+      </FieldRow>
       <FieldRow label="Size (sqft)" confidence={conf.sizeSqft}>
         <input type="number" className="ir-input !text-xs" value={(fields.sizeSqft as number) ?? ""} onChange={(e) => set("sizeSqft", Number(e.target.value) || undefined)} />
+      </FieldRow>
+      <FieldRow label="Bedrooms" confidence={conf.bedrooms}>
+        <input type="number" className="ir-input !text-xs" value={(fields.bedrooms as number) ?? ""} onChange={(e) => set("bedrooms", Number(e.target.value) || undefined)} />
+      </FieldRow>
+      <FieldRow label="Bathrooms" confidence={conf.bathrooms}>
+        <input type="number" className="ir-input !text-xs" value={(fields.bathrooms as number) ?? ""} onChange={(e) => set("bathrooms", Number(e.target.value) || undefined)} />
+      </FieldRow>
+      <FieldRow label="Floors" confidence={conf.floors}>
+        <input type="number" className="ir-input !text-xs" value={(fields.floors as number) ?? ""} onChange={(e) => set("floors", Number(e.target.value) || undefined)} />
       </FieldRow>
       <FieldRow label="Price / rent" confidence={conf.totalPrice}>
         <input
@@ -264,6 +282,50 @@ function PropertyFields({ fields, set, draft }: { fields: Record<string, unknown
           }}
         />
       </FieldRow>
+      <FieldRow label="Negotiable">
+        <label className="flex h-[34px] items-center gap-1.5 text-xs text-black/70">
+          <input type="checkbox" checked={Boolean(fields.priceNegotiable)} onChange={(e) => set("priceNegotiable", e.target.checked)} />
+          Price is negotiable
+        </label>
+      </FieldRow>
+      <FieldRow label="Description — full extracted text, edit as needed" className="col-span-2">
+        <textarea rows={3} className="ir-input !text-xs" value={(fields.description as string) ?? ""} onChange={(e) => set("description", e.target.value)} />
+      </FieldRow>
+      <FeatureTags label="Features" value={(fields.features as Record<string, unknown>) ?? {}} onChange={(v) => set("features", v)} />
+    </div>
+  );
+}
+
+// Every field above has a fixed name, but the model can capture details
+// that don't fit one (parking count, furnishing, floor number…) as
+// features instead of dropping them — this is where those actually
+// surface for review, not just get saved invisibly on approve.
+function FeatureTags({ label, value, onChange }: { label: string; value: Record<string, unknown>; onChange: (v: Record<string, unknown>) => void }) {
+  const entries = Object.entries(value);
+  if (entries.length === 0) return null;
+  return (
+    <div className="col-span-2">
+      <label className="ir-label mb-1 block">{label}</label>
+      <div className="flex flex-wrap gap-1.5">
+        {entries.map(([k, v]) => (
+          <span key={k} className="ir-badge inline-flex items-center gap-1 bg-ir-gold/15 text-ir-gold-dark">
+            {titleCase(k)}
+            {typeof v !== "boolean" ? `: ${v}` : ""}
+            <button
+              type="button"
+              onClick={() => {
+                const next = { ...value };
+                delete next[k];
+                onChange(next);
+              }}
+              className="ml-0.5 text-ir-gold-dark/60 hover:text-ir-gold-dark"
+              title={`Remove ${k}`}
+            >
+              <X size={10} />
+            </button>
+          </span>
+        ))}
+      </div>
     </div>
   );
 }
@@ -278,6 +340,9 @@ function RequirementFields({ fields, set, draft }: { fields: Record<string, unkn
       </FieldRow>
       <FieldRow label="Client phone" confidence={conf.clientPhone}>
         <input className="ir-input !text-xs" value={(fields.clientPhone as string) ?? ""} onChange={(e) => set("clientPhone", e.target.value)} />
+      </FieldRow>
+      <FieldRow label="Alternate phone" confidence={conf.alternatePhone}>
+        <input className="ir-input !text-xs" value={(fields.alternatePhone as string) ?? ""} onChange={(e) => set("alternatePhone", e.target.value)} />
       </FieldRow>
       <FieldRow label="Deal type">
         <select className="ir-select !text-xs" value={(fields.dealType as string) ?? "BUY"} onChange={(e) => set("dealType", e.target.value)}>
@@ -295,8 +360,14 @@ function RequirementFields({ fields, set, draft }: { fields: Record<string, unkn
       <FieldRow label="Locations" confidence={conf.locations}>
         <input className="ir-input !text-xs" value={locations.join(", ")} onChange={(e) => set("locations", e.target.value.split(",").map((s) => s.trim()).filter(Boolean))} />
       </FieldRow>
+      <FieldRow label="Size min (sqft)" confidence={conf.sizeMin}>
+        <input type="number" className="ir-input !text-xs" value={(fields.sizeMin as number) ?? ""} onChange={(e) => set("sizeMin", Number(e.target.value) || undefined)} />
+      </FieldRow>
       <FieldRow label="Size max (sqft)" confidence={conf.sizeMax}>
         <input type="number" className="ir-input !text-xs" value={(fields.sizeMax as number) ?? ""} onChange={(e) => set("sizeMax", Number(e.target.value) || undefined)} />
+      </FieldRow>
+      <FieldRow label="Budget min" confidence={conf.budgetMin}>
+        <input type="number" className="ir-input !text-xs" value={(fields.budgetMin as number) ?? ""} onChange={(e) => set("budgetMin", Number(e.target.value) || undefined)} />
       </FieldRow>
       <FieldRow label="Budget max" confidence={conf.budgetMax}>
         <input type="number" className="ir-input !text-xs" value={(fields.budgetMax as number) ?? ""} onChange={(e) => set("budgetMax", Number(e.target.value) || undefined)} />
@@ -306,6 +377,13 @@ function RequirementFields({ fields, set, draft }: { fields: Record<string, unkn
           {["LOW", "MEDIUM", "HIGH", "CRITICAL"].map((u) => <option key={u} value={u}>{titleCase(u)}</option>)}
         </select>
       </FieldRow>
+      <FieldRow label="Intended use" confidence={conf.intendedUse}>
+        <input className="ir-input !text-xs" value={(fields.intendedUse as string) ?? ""} onChange={(e) => set("intendedUse", e.target.value)} />
+      </FieldRow>
+      <FieldRow label="Notes — full extracted text, edit as needed" className="col-span-2">
+        <textarea rows={3} className="ir-input !text-xs" value={(fields.notes as string) ?? ""} onChange={(e) => set("notes", e.target.value)} />
+      </FieldRow>
+      <FeatureTags label="Required features" value={(fields.requiredFeatures as Record<string, unknown>) ?? {}} onChange={(v) => set("requiredFeatures", v)} />
     </div>
   );
 }

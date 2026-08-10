@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { PROPERTY_SUBTYPES, FEATURE_FIELDS_BY_SUBTYPE, DEFAULT_FEATURES, ALL_DISTRICTS, ALL_CITIES, districtForCity } from "@/lib/locations";
 import { titleCase, formatCurrency } from "@/lib/format";
 import { SubmitButton } from "@/components/SubmitButton";
+import { PhoneField } from "@/components/PhoneField";
 import { applyMarkup } from "@/lib/property";
 
 type Owner = { id: string; name: string; phone: string };
@@ -203,7 +204,7 @@ export function PropertyForm({
           ) : (
             <>
               <TextField name="ownerNewName" label="Owner name" />
-              <TextField name="ownerNewPhone" label="Owner phone" placeholder="+9477…" />
+              <PhoneField name="ownerNewPhone" label="Owner phone" />
             </>
           )}
         </Grid>

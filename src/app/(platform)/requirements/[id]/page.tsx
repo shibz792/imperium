@@ -54,7 +54,7 @@ export default async function RequirementDetailPage({ params, searchParams }: { 
 
   const locations = Array.isArray(requirement.preferredLocationsJson) ? (requirement.preferredLocationsJson as string[]) : [];
   const surrounding = Array.isArray(requirement.acceptableSurroundingJson) ? (requirement.acceptableSurroundingJson as string[]) : [];
-  const features = (requirement.requiredFeaturesJson as Record<string, boolean>) ?? {};
+  const features = (requirement.requiredFeaturesJson as Record<string, boolean | string | number>) ?? {};
   const basePath = `/requirements/${id}`;
   const needsReconfirm = requirement.lastContacted ? daysAgo(requirement.lastContacted)! > 14 : true;
 
@@ -164,7 +164,14 @@ export default async function RequirementDetailPage({ params, searchParams }: { 
             {Object.keys(features).length > 0 && (
               <div className="mt-3">
                 <div className="ir-label mb-1.5">Required features</div>
-                <div className="flex flex-wrap gap-1.5">{Object.keys(features).map((f) => <Badge key={f} tone="gold">{titleCase(f)}</Badge>)}</div>
+                <div className="flex flex-wrap gap-1.5">
+                  {Object.entries(features).map(([f, v]) => (
+                    <Badge key={f} tone="gold">
+                      {titleCase(f)}
+                      {typeof v !== "boolean" ? `: ${v}` : ""}
+                    </Badge>
+                  ))}
+                </div>
               </div>
             )}
             {requirement.intendedUse && (

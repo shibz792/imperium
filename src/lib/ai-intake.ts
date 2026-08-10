@@ -18,10 +18,17 @@ Rules:
 - Convert all sizes to a consistent unit where possible but keep the original number if unsure.
 - Sri Lankan currency is LKR. "lakhs" = 100,000. "Cr"/"crore" = 10,000,000. "mn"/"million" = 1,000,000.
 - Detect sale vs rent vs lease intent from context.
-- If a field is missing or uncertain, omit it — do not invent data.
 - Give an overall confidence (0-100) per draft, and a per-field confidence (0-100) in "fieldConfidence".
-- List "missingFields": important fields that are absent and should be confirmed with the client.
+- List "missingFields": important fields that are genuinely absent from the source and should be confirmed with the client — not fields you simply chose not to fill.
 - Extract a short "sourceExcerpt" — the portion of the input this draft was derived from.
+
+DO NOT LOSE INFORMATION. This is the most important rule and overrides brevity:
+- "If a field is missing or uncertain, omit it — do not invent data" applies ONLY to the named structured fields (city, price, bedrooms, etc.) — never fabricate a number or fact that wasn't stated. It does NOT mean discarding real information the source text actually contains just because it doesn't fit one of those named fields.
+- Every concrete fact mentioned in the source text must end up somewhere in the draft: in a named field if there's a match, in "features"/"requiredFeatures" if it's a property detail without its own field, or in "description"/"notes" otherwise. Nothing gets silently dropped.
+- "description" (property) and "notes" (requirement) must be a complete, faithful rewrite of everything in the source text relevant to that item — reworded for clarity, never shortened into a summary. Keep every condition, nuance, timing detail, negotiation term, and specific circumstance the source mentions (e.g. "flexible on move-in date", "seller relocating end of month", "prefers tenants without pets", "price includes furniture", a second phone number, a specific unit/floor).
+- If some context in the source applies to more than one item (a shared instruction, or a detail mentioned once but relevant to several listings/requirements in the same message), include it in every draft it applies to rather than only the first.
+- "features"/"requiredFeatures" values: use \`true\` for a plain yes/no amenity ("pool": true). Use a string or number when the source gives a specific detail worth keeping ("parkingSpaces": 3, "furnishing": "semi-furnished", "floor": "3rd floor") instead of dropping that specificity down to a boolean.
+- If more than one phone number is given for the same person, put the clearest/primary one in ownerPhone/clientPhone and any other number(s) in "alternatePhone" (comma-separated if there's more than one) — never drop a phone number just because there's already one in the structured field.
 
 Return strict JSON only, matching this shape:
 {
@@ -35,21 +42,21 @@ Return strict JSON only, matching this shape:
       "suggestedFollowUp": string,
       "fields": {
         // for kind=property:
-        "title": string, "ownerName": string, "ownerPhone": string,
+        "title": string, "ownerName": string, "ownerPhone": string, "alternatePhone": string,
         "category": "RESIDENTIAL"|"COMMERCIAL"|"INDUSTRIAL_LOGISTICS"|"LAND_AGRICULTURE",
         "subtype": string, "transactionType": "SALE"|"RENT"|"LEASE"|"SHORT_TERM_RENTAL"|"INVESTMENT"|"JOINT_VENTURE"|"DEVELOPMENT"|"OFF_MARKET",
         "city": string, "district": string, "address": string,
         "sizeSqft": number, "sizePerches": number, "sizeAcres": number,
         "totalPrice": number, "monthlyRental": number, "annualLeaseValue": number, "currency": "LKR",
         "bedrooms": number, "bathrooms": number, "floors": number, "priceNegotiable": boolean, "landmark": string,
-        "features": { [key: string]: boolean }, "description": string
+        "features": { [key: string]: boolean | string | number }, "description": string
         // for kind=requirement:
-        "clientName": string, "clientPhone": string, "title": string,
+        "clientName": string, "clientPhone": string, "alternatePhone": string, "title": string,
         "dealType": "BUY"|"RENT"|"LEASE",
         "category": "RESIDENTIAL"|"COMMERCIAL"|"INDUSTRIAL_LOGISTICS"|"LAND_AGRICULTURE", "subtype": string,
         "locations": string[], "sizeMin": number, "sizeMax": number,
         "budgetMin": number, "budgetMax": number,
-        "requiredFeatures": { [key: string]: boolean }, "urgency": "LOW"|"MEDIUM"|"HIGH"|"CRITICAL",
+        "requiredFeatures": { [key: string]: boolean | string | number }, "urgency": "LOW"|"MEDIUM"|"HIGH"|"CRITICAL",
         "intendedUse": string, "notes": string
       }
     }

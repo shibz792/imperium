@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { ALL_DISTRICTS } from "@/lib/locations";
 import { SubmitButton } from "@/components/SubmitButton";
+import { PhoneField } from "@/components/PhoneField";
 
 export function AgentForm({
   action,
@@ -32,9 +33,7 @@ export function AgentForm({
             <input name="email" type="email" required className="ir-input" />
           </Field>
         )}
-        <Field label="Phone">
-          <input name="phone" placeholder="+9477…" defaultValue={initial?.phone as string} className="ir-input" />
-        </Field>
+        <PhoneField name="phone" label="Phone" defaultValue={initial?.phone as string} />
         {isNew && (
           <>
             <Field label="Role">

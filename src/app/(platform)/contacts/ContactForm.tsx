@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { SubmitButton } from "@/components/SubmitButton";
+import { PhoneField } from "@/components/PhoneField";
 import { ALL_CITIES, ALL_DISTRICTS } from "@/lib/locations";
 import { titleCase } from "@/lib/format";
 
@@ -33,9 +34,7 @@ export function ContactForm({
         <Field label="Name">
           <input name="name" required autoFocus defaultValue={initial?.name as string} placeholder="Adam" className="ir-input" />
         </Field>
-        <Field label="Phone / WhatsApp number">
-          <input name="phone" required defaultValue={initial?.phone as string} placeholder="+9477…" className="ir-input" />
-        </Field>
+        <PhoneField name="phone" label="Phone / WhatsApp number" required defaultValue={initial?.phone as string} />
         <Field label="Type">
           <select name="contactType" value={contactType} onChange={(e) => setContactType(e.target.value)} className="ir-select">
             {["OWNER", "BUYER", "TENANT", "BROKER", "DEVELOPER", "INVESTOR", "CORPORATE"].map((t) => (
@@ -63,9 +62,7 @@ export function ContactForm({
           <span className="hidden group-open:inline">− Hide extra details</span>
         </summary>
         <div className="mt-3 grid grid-cols-1 gap-3 border-t border-black/6 pt-3 sm:grid-cols-2">
-          <Field label="WhatsApp (if different)">
-            <input name="whatsapp" defaultValue={initial?.whatsapp as string} placeholder="+9477…" className="ir-input" />
-          </Field>
+          <PhoneField name="whatsapp" label="WhatsApp (if different)" defaultValue={initial?.whatsapp as string} />
           <Field label="Email">
             <input name="email" type="email" defaultValue={initial?.email as string} className="ir-input" />
           </Field>

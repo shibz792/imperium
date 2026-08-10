@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { SubmitButton } from "@/components/SubmitButton";
+import { PhoneField } from "@/components/PhoneField";
 import { PROPERTY_SUBTYPES, FEATURE_FIELDS_BY_SUBTYPE, DEFAULT_FEATURES, ALL_CITIES, ALL_DISTRICTS } from "@/lib/locations";
 import { titleCase } from "@/lib/format";
 
@@ -53,7 +54,7 @@ export function RequirementForm({
           ) : (
             <>
               <TextField name="clientNewName" label="Client name" />
-              <TextField name="clientNewPhone" label="Client phone" placeholder="+9477…" />
+              <PhoneField name="clientNewPhone" label="Client phone" />
               <SelectField name="clientContactType" label="Contact type" defaultValue="BUYER" options={[["BUYER", "Buyer"], ["TENANT", "Tenant"]]} />
             </>
           )}

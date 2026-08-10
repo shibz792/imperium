@@ -31,7 +31,7 @@ async function findOrCreateContact(
   phone: string | undefined,
   type: "OWNER" | "BUYER" | "TENANT",
   agentId: string,
-  opts?: { source?: string; capacity?: "INDIVIDUAL" | "COMPANY" | "REPRESENTATIVE" },
+  opts?: { source?: string; capacity?: "INDIVIDUAL" | "COMPANY" | "REPRESENTATIVE"; alternatePhone?: string },
 ) {
   if (phone) {
     const existing = await prisma.contact.findFirst({ where: { OR: [{ phone }, { whatsapp: phone }] } });
@@ -47,9 +47,23 @@ async function findOrCreateContact(
       whatsapp: phone,
       assignedAgentId: agentId,
       source: opts?.source ?? "Imperium AI Intake",
+      // Contact has one phone column — a second number the source text
+      // gave has nowhere structured to go, so it's recorded here rather
+      // than silently dropped.
+      notes: opts?.alternatePhone ? `Alternate phone: ${opts.alternatePhone}` : undefined,
     },
   });
   return contact.id;
+}
+
+// Deterministic, not model-dependent: guarantees a second phone number
+// survives into the record even though there's no dedicated column for it,
+// rather than relying on the LLM to remember to mention it in prose
+// (testing showed it doesn't reliably do that on its own).
+function withAlternatePhone(text: string | undefined, alternatePhone: string | undefined): string | undefined {
+  if (!alternatePhone) return text;
+  const line = `Alternate phone: ${alternatePhone}`;
+  return text ? `${text}\n\n${line}` : line;
 }
 
 export async function approvePropertyDraft(
@@ -64,13 +78,14 @@ export async function approvePropertyDraft(
   const ownerId = await findOrCreateContact(fields.ownerName, fields.ownerPhone, "OWNER", user.id, {
     source: origin?.source,
     capacity: origin ? "REPRESENTATIVE" : undefined,
+    alternatePhone: fields.alternatePhone,
   });
 
   const property = await prisma.property.create({
     data: {
       propertyRef: await nextPropertyRef(),
       title: fields.title || `${fields.subtype ?? "Property"} in ${fields.city ?? "location tbc"}`,
-      description: fields.description ?? sourceExcerpt,
+      description: withAlternatePhone(fields.description ?? sourceExcerpt, fields.alternatePhone),
       category: (fields.category ?? "RESIDENTIAL") as never,
       subtype: fields.subtype ?? "House",
       transactionType: (fields.transactionType ?? "SALE") as never,
@@ -110,7 +125,9 @@ export async function approvePropertyDraft(
 
 export async function approveRequirementDraft(fields: RequirementDraftFields, sourceExcerpt: string, origin?: { source: string }) {
   const user = await requireUser();
-  const clientId = await findOrCreateContact(fields.clientName, fields.clientPhone, fields.dealType === "RENT" ? "TENANT" : "BUYER", user.id);
+  const clientId = await findOrCreateContact(fields.clientName, fields.clientPhone, fields.dealType === "RENT" ? "TENANT" : "BUYER", user.id, {
+    alternatePhone: fields.alternatePhone,
+  });
 
   const requirement = await prisma.requirement.create({
     data: {
@@ -132,7 +149,7 @@ export async function approveRequirementDraft(fields: RequirementDraftFields, so
       quality: "UNVERIFIED",
       status: "NEW",
       source: origin?.source ?? "Imperium AI Intake",
-      confidentialNotes: fields.notes && fields.notes !== sourceExcerpt ? fields.notes : undefined,
+      confidentialNotes: withAlternatePhone(fields.notes && fields.notes !== sourceExcerpt ? fields.notes : undefined, fields.alternatePhone),
       lastContacted: new Date(),
       assignedAgentId: user.id,
     } as never,

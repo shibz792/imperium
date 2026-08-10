@@ -8,6 +8,12 @@ export type PropertyDraftFields = {
   title?: string;
   ownerName?: string;
   ownerPhone?: string;
+  // A second number mentioned for the same person (e.g. "also reachable on
+  // ... home") — there's no second column for this on Contact, so
+  // approvePropertyDraft folds it into the description deterministically
+  // rather than relying on the model to remember to mention it in prose,
+  // which testing showed it doesn't reliably do.
+  alternatePhone?: string;
   category?: "RESIDENTIAL" | "COMMERCIAL" | "INDUSTRIAL_LOGISTICS" | "LAND_AGRICULTURE";
   subtype?: string;
   transactionType?: "SALE" | "RENT" | "LEASE" | "SHORT_TERM_RENTAL" | "INVESTMENT" | "JOINT_VENTURE" | "DEVELOPMENT" | "OFF_MARKET";
@@ -26,13 +32,20 @@ export type PropertyDraftFields = {
   floors?: number;
   priceNegotiable?: boolean;
   landmark?: string;
-  features?: Record<string, boolean>;
+  // boolean for a plain yes/no amenity ("pool": true); string/number when
+  // the source text gave a specific detail worth keeping ("parkingSpaces": 3,
+  // "furnishing": "semi-furnished") — this is also where anything else
+  // mentioned that doesn't have its own named field above ends up, rather
+  // than being dropped. Both match.ts (scoring) and the property detail
+  // page already treat a truthy string/number the same as `true`.
+  features?: Record<string, boolean | string | number>;
   description?: string;
 };
 
 export type RequirementDraftFields = {
   clientName?: string;
   clientPhone?: string;
+  alternatePhone?: string; // see the comment on PropertyDraftFields.alternatePhone
   title?: string;
   dealType?: "BUY" | "RENT" | "LEASE";
   category?: "RESIDENTIAL" | "COMMERCIAL" | "INDUSTRIAL_LOGISTICS" | "LAND_AGRICULTURE";
@@ -42,7 +55,7 @@ export type RequirementDraftFields = {
   sizeMax?: number;
   budgetMin?: number;
   budgetMax?: number;
-  requiredFeatures?: Record<string, boolean>;
+  requiredFeatures?: Record<string, boolean | string | number>;
   urgency?: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
   intendedUse?: string;
   notes?: string;
