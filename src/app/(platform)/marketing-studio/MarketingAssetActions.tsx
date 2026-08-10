@@ -2,15 +2,15 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Copy, Check, RefreshCcw, Trash2, Loader2, ImagePlus } from "lucide-react";
-import { regenerateAsset, deleteMarketingAsset, generateSocialImage } from "./actions";
+import { Copy, Check, RefreshCcw, Trash2, Loader2, ImagePlus, FileText, Download } from "lucide-react";
+import { regenerateAsset, deleteMarketingAsset, generateSocialImage, generateBrochurePdf } from "./actions";
 import type { ContentType } from "@/lib/marketing";
 
 // Copy / regenerate-in-place / delete for one generation — a small client
 // island inside an otherwise server-rendered card, same reasoning as
 // CopyWhatsAppButton elsewhere: the surrounding list stays server-rendered.
-// SOCIAL_1_1 / STORY_9_16 rows also get a "Generate image" control — see
-// src/lib/marketingImage.ts for what that composes.
+// SOCIAL_1_1 / STORY_9_16 rows also get a "Generate image" control (see
+// marketingImage.ts) and BROCHURE rows get "Generate PDF" (see brochurePdf.ts).
 export function MarketingAssetActions({
   id,
   content,
@@ -30,6 +30,7 @@ export function MarketingAssetActions({
   const [imageError, setImageError] = useState<string | null>(null);
   const router = useRouter();
   const isSocialFormat = contentType === "SOCIAL_1_1" || contentType === "STORY_9_16";
+  const isBrochure = contentType === "BROCHURE";
 
   function copy() {
     navigator.clipboard.writeText(content);
@@ -62,6 +63,18 @@ export function MarketingAssetActions({
     });
   }
 
+  function makePdf() {
+    setImageError(null);
+    startImageTransition(async () => {
+      const result = await generateBrochurePdf(id);
+      if (!result.ok) {
+        setImageError(result.error);
+        return;
+      }
+      router.refresh();
+    });
+  }
+
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-center gap-1">
@@ -75,6 +88,16 @@ export function MarketingAssetActions({
           <button onClick={makeImage} disabled={imagePending} title={imageUrl ? "Regenerate image" : "Generate image"} className="flex h-6 w-6 items-center justify-center rounded text-ir-gold-dark hover:bg-ir-gold/10 disabled:opacity-40">
             {imagePending ? <Loader2 size={13} className="animate-spin" /> : <ImagePlus size={13} />}
           </button>
+        )}
+        {isBrochure && (
+          <button onClick={makePdf} disabled={imagePending} title={imageUrl ? "Regenerate PDF" : "Generate PDF"} className="flex h-6 w-6 items-center justify-center rounded text-ir-gold-dark hover:bg-ir-gold/10 disabled:opacity-40">
+            {imagePending ? <Loader2 size={13} className="animate-spin" /> : <FileText size={13} />}
+          </button>
+        )}
+        {isBrochure && imageUrl && (
+          <a href={imageUrl} download title="Download PDF" className="flex h-6 w-6 items-center justify-center rounded text-black/40 hover:bg-black/[0.05] hover:text-ir-navy">
+            <Download size={13} />
+          </a>
         )}
         {!approved && (
           <button onClick={del} disabled={pending} title="Delete" className="flex h-6 w-6 items-center justify-center rounded text-black/25 hover:bg-black/[0.05] hover:text-[color:var(--color-brick)] disabled:opacity-40">

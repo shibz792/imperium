@@ -2,17 +2,21 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { MessageCircle, Loader2, Send } from "lucide-react";
-import { matchedAudience, whatsAppContentForProperty, sendMatchedContact, type MatchedContact } from "./actions";
+import { MessageCircle, Loader2, Send, Mail } from "lucide-react";
+import { matchedAudience, whatsAppContentForProperty, sendMatchedContact, emailContentForProperty, sendMatchedContactEmail, type MatchedContact } from "./actions";
+
+type SendState = "idle" | "sending" | "sent" | "failed";
 
 // The "tie it all together" piece: reuses lib/match.ts's scoreMatch — the
 // same engine Matchmaker is built on — to answer "who is this listing
 // actually relevant to", right where the content gets generated, instead
 // of Marketing Studio being a dead end once something's approved.
-export function MatchedAudiencePanel({ propertyId, cloudConfigured }: { propertyId: string; cloudConfigured: boolean }) {
+export function MatchedAudiencePanel({ propertyId, cloudConfigured, emailConfigured }: { propertyId: string; cloudConfigured: boolean; emailConfigured: boolean }) {
   const [matches, setMatches] = useState<MatchedContact[] | null>(null);
   const [content, setContent] = useState<string | null>(null);
-  const [sentTo, setSentTo] = useState<Record<string, "sending" | "sent" | "failed">>({});
+  const [email, setEmail] = useState<{ subject: string; body: string } | null>(null);
+  const [sentTo, setSentTo] = useState<Record<string, SendState>>({});
+  const [emailedTo, setEmailedTo] = useState<Record<string, SendState>>({});
 
   // Keyed by propertyId in the parent (see MarketingStudioClient) so a
   // property switch remounts this component fresh instead of needing a
@@ -20,10 +24,11 @@ export function MatchedAudiencePanel({ propertyId, cloudConfigured }: { property
   useEffect(() => {
     let cancelled = false;
     if (!propertyId) return;
-    Promise.all([matchedAudience(propertyId), whatsAppContentForProperty(propertyId)]).then(([m, c]) => {
+    Promise.all([matchedAudience(propertyId), whatsAppContentForProperty(propertyId), emailContentForProperty(propertyId)]).then(([m, c, e]) => {
       if (cancelled) return;
       setMatches(m);
       setContent(c);
+      setEmail(e);
     });
     return () => {
       cancelled = true;
@@ -35,6 +40,13 @@ export function MatchedAudiencePanel({ propertyId, cloudConfigured }: { property
     setSentTo((s) => ({ ...s, [contact.requirementId]: "sending" }));
     const result = await sendMatchedContact(contact.clientPhone, content);
     setSentTo((s) => ({ ...s, [contact.requirementId]: result.ok ? "sent" : "failed" }));
+  }
+
+  async function sendEmailTo(contact: MatchedContact) {
+    if (!email || !contact.clientEmail) return;
+    setEmailedTo((s) => ({ ...s, [contact.requirementId]: "sending" }));
+    const result = await sendMatchedContactEmail(contact.clientEmail, email.subject, email.body);
+    setEmailedTo((s) => ({ ...s, [contact.requirementId]: result.ok ? "sent" : "failed" }));
   }
 
   if (matches === null) {
@@ -68,7 +80,8 @@ export function MatchedAudiencePanel({ propertyId, cloudConfigured }: { property
       {!content && <p className="mb-3 text-xs text-black/40">Generate and approve WhatsApp content above to enable sending.</p>}
       <div className="space-y-2">
         {matches.map((m) => {
-          const status = sentTo[m.requirementId];
+          const status = sentTo[m.requirementId] ?? "idle";
+          const emailStatus = emailedTo[m.requirementId] ?? "idle";
           return (
             <div key={m.requirementId} className="flex items-center gap-3 rounded border border-black/8 px-3 py-2">
               <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 border-current text-xs font-semibold text-ir-gold-dark tabular-nums">{m.score}</div>
@@ -96,6 +109,17 @@ export function MatchedAudiencePanel({ propertyId, cloudConfigured }: { property
                 >
                   {status === "sending" ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
                   {status === "sent" ? "Sent" : status === "failed" ? "Failed — retry" : "Send now"}
+                </button>
+              )}
+              {emailConfigured && m.clientEmail && email && (
+                <button
+                  onClick={() => sendEmailTo(m)}
+                  disabled={emailStatus === "sending" || emailStatus === "sent"}
+                  className="ir-btn ir-btn-ghost !py-1 !text-xs disabled:opacity-40"
+                  title={`Email ${m.clientEmail}`}
+                >
+                  {emailStatus === "sending" ? <Loader2 size={13} className="animate-spin" /> : <Mail size={13} />}
+                  {emailStatus === "sent" ? "Emailed" : emailStatus === "failed" ? "Failed — retry" : "Email"}
                 </button>
               )}
             </div>

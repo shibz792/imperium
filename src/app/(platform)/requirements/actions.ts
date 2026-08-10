@@ -7,6 +7,10 @@ import { requireUser, requireRole, ADMIN_ROLES } from "@/lib/auth";
 import { nextRequirementRef, nextContactRef } from "@/lib/refs";
 import { writeAudit, logActivity } from "@/lib/audit";
 import { deleteGuarded } from "@/lib/deleteGuard";
+import { scoreMatch } from "@/lib/match";
+import { buildClientDigest, buildBrokerBroadcast } from "@/lib/requirementMarketing";
+import { waLink, whatsappCloudConfigured, sendWhatsAppMessage } from "@/lib/whatsapp";
+import { sendEmail } from "@/lib/email";
 
 function str(fd: FormData, key: string): string | undefined {
   const v = fd.get(key);
@@ -161,4 +165,56 @@ export async function deleteRequirement(id: string) {
   await writeAudit({ userId: admin.id, action: "DELETE", entityType: "requirement", entityId: id });
   revalidatePath("/requirements");
   redirect("/requirements");
+}
+
+// ---------------------------------------------------------------------------
+// Requirement marketing — the other half of Marketing Studio: reaching out
+// on a requirement's behalf, not just a property's. See lib/requirementMarketing.ts.
+// ---------------------------------------------------------------------------
+
+// "Send matches to client" — reuses scoreMatch (lib/match.ts), the exact
+// engine Matchmaker and the property-side matched-audience panel already
+// run on, just aimed the other direction (best properties for this one
+// requirement, not best requirements for one property).
+export async function clientDigestPreview(requirementId: string): Promise<{ message: string; clientPhone: string; clientEmail: string | null; matchCount: number } | { message: null }> {
+  await requireUser();
+  const requirement = await prisma.requirement.findUniqueOrThrow({ where: { id: requirementId }, include: { client: true } });
+  const properties = await prisma.property.findMany({ where: { listingStatus: "ACTIVE" } });
+  const topMatches = properties
+    .map((p) => ({ property: p, result: scoreMatch(p, requirement) }))
+    .filter((m): m is { property: (typeof properties)[number]; result: NonNullable<ReturnType<typeof scoreMatch>> } => m.result !== null && m.result.score >= 60)
+    .sort((a, b) => b.result.score - a.result.score)
+    .slice(0, 5)
+    .map((m) => m.property);
+
+  if (topMatches.length === 0 || !requirement.client.phone) return { message: null };
+  const message = await buildClientDigest(requirement, topMatches);
+  return { message, clientPhone: requirement.client.phone, clientEmail: requirement.client.email, matchCount: topMatches.length };
+}
+
+export type BrokerContact = { id: string; name: string; phone: string; email: string | null };
+
+export async function brokerBroadcastPreview(requirementId: string): Promise<{ message: string; brokers: BrokerContact[] }> {
+  await requireUser();
+  const [requirement, brokers] = await Promise.all([
+    prisma.requirement.findUniqueOrThrow({ where: { id: requirementId } }),
+    prisma.contact.findMany({ where: { contactType: "BROKER" }, select: { id: true, name: true, phone: true, email: true } }),
+  ]);
+  const message = await buildBrokerBroadcast(requirement);
+  return { message, brokers: brokers.filter((b) => b.phone) };
+}
+
+export async function requirementWaLink(phone: string, content: string): Promise<{ link: string; cloudConfigured: boolean }> {
+  await requireUser();
+  return { link: waLink(phone, content), cloudConfigured: whatsappCloudConfigured() };
+}
+
+export async function sendRequirementWhatsApp(phone: string, content: string) {
+  await requireUser();
+  return sendWhatsAppMessage(phone, content);
+}
+
+export async function sendRequirementEmail(email: string, subject: string, body: string) {
+  await requireUser();
+  return sendEmail(email, subject, body);
 }

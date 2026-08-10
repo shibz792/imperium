@@ -11,6 +11,9 @@ import { relevantAskingPrice, priceUnit } from "@/lib/property";
 import { formatCurrency } from "@/lib/format";
 import { scoreMatch } from "@/lib/match";
 import { waLink, whatsappCloudConfigured, sendWhatsAppMessage } from "@/lib/whatsapp";
+import { composeBrochure } from "@/lib/brochurePdf";
+import { appBaseUrl } from "@/lib/url";
+import { sendEmail, parseEmailContent } from "@/lib/email";
 
 export async function generateAsset(propertyId: string, contentType: ContentType, language: "EN" | "SI" | "TA") {
   const user = await requireUser();
@@ -47,6 +50,21 @@ export async function generateAllAssets(propertyId: string, language: "EN" | "SI
   );
 
   return assets;
+}
+
+// "Get everyone caught up" — every ACTIVE listing with no approved
+// marketing content yet. Returned to the client so it can drive the
+// sequential loop itself (see MarketingStudioClient.tsx) and show real
+// per-property progress, rather than one opaque server call that only
+// resolves at the very end.
+export async function propertiesNeedingCampaign(): Promise<{ id: string; title: string }[]> {
+  await requireUser();
+  const properties = await prisma.property.findMany({
+    where: { listingStatus: "ACTIVE" },
+    select: { id: true, title: true, marketingAssets: { where: { approved: true }, take: 1 } },
+    orderBy: { title: "asc" },
+  });
+  return properties.filter((p) => p.marketingAssets.length === 0).map((p) => ({ id: p.id, title: p.title }));
 }
 
 export async function approveAsset(id: string) {
@@ -168,6 +186,42 @@ export async function generateSocialImage(assetId: string): Promise<{ ok: true; 
   return { ok: true, imageUrl };
 }
 
+// A real, multi-page PDF brochure — not just the BROCHURE content type's
+// text sitting unused. Stored and served exactly like generateSocialImage's
+// composed tiles: the imageData/imageMimeType columns and the
+// /api/marketing-image/[assetId] route are already generic (any bytes,
+// any mimetype), so a PDF needs no schema change, just a different
+// mimetype value. If the property already has a public share page (see
+// properties/actions.ts createSharePage), its link becomes the brochure's
+// QR code; otherwise the brochure is generated without one.
+export async function generateBrochurePdf(assetId: string): Promise<{ ok: true; imageUrl: string } | { ok: false; error: string }> {
+  const user = await requireUser();
+  const asset = await prisma.marketingAsset.findUniqueOrThrow({ where: { id: assetId }, include: { property: true } });
+  if (asset.contentType !== "BROCHURE") {
+    return { ok: false, error: "PDF generation is only available for the brochure content type." };
+  }
+
+  const [cover, sharePage] = await Promise.all([
+    prisma.propertyMedia.findFirst({
+      where: { propertyId: asset.propertyId, type: "PHOTO", url: { not: PLACEHOLDER_MEDIA_URL } },
+      orderBy: { isCover: "desc" },
+    }),
+    prisma.sharePage.findFirst({ where: { propertyId: asset.propertyId }, orderBy: { createdAt: "desc" } }),
+  ]);
+  const photoBuffer = cover ? await fetchSourcePhoto(cover.url) : null;
+  const shareUrl = sharePage ? `${appBaseUrl()}/share/${sharePage.slug}` : null;
+
+  const pdf = await composeBrochure({ property: asset.property, brochureText: asset.content, photoBuffer, shareUrl });
+
+  const imageUrl = `/api/marketing-image/${assetId}`;
+  await prisma.marketingAsset.update({ where: { id: assetId }, data: { imageData: new Uint8Array(pdf), imageMimeType: "application/pdf", imageUrl } });
+
+  await logActivity({ entityType: "property", propertyId: asset.propertyId, type: "MARKETING_GENERATED", message: `${user.name} generated a PDF brochure.`, userId: user.id });
+  revalidatePath("/marketing-studio");
+  revalidatePath(`/properties/${asset.propertyId}`);
+  return { ok: true, imageUrl };
+}
+
 // The message a "Send via WhatsApp" click should carry: the approved
 // WHATSAPP asset if one exists (same content the app's own WhatsApp copy
 // buttons already use, see whatsAppMessage() in lib/property.ts), else the
@@ -185,6 +239,7 @@ export type MatchedContact = {
   requirementId: string;
   clientName: string;
   clientPhone: string;
+  clientEmail: string | null;
   score: number;
 };
 
@@ -207,11 +262,28 @@ export async function matchedAudience(propertyId: string): Promise<MatchedContac
     .map((r) => {
       const result = scoreMatch(property, r);
       if (!result || result.score < 60 || !r.client.phone) return null;
-      return { requirementId: r.id, clientName: r.client.name, clientPhone: r.client.phone, score: result.score };
+      return { requirementId: r.id, clientName: r.client.name, clientPhone: r.client.phone, clientEmail: r.client.email, score: result.score };
     })
     .filter((m): m is MatchedContact => m !== null)
     .sort((a, b) => b.score - a.score)
     .slice(0, 5);
+}
+
+// The EMAIL_CAMPAIGN content type is already written as "Subject: ...\n\n
+// <body>" (see CHANNEL_SPECS, lib/marketing.ts) — parseEmailContent just
+// splits that, it doesn't regenerate anything.
+export async function emailContentForProperty(propertyId: string): Promise<{ subject: string; body: string } | null> {
+  await requireUser();
+  const asset = await prisma.marketingAsset.findFirst({
+    where: { propertyId, contentType: "EMAIL_CAMPAIGN" },
+    orderBy: [{ approved: "desc" }, { createdAt: "desc" }],
+  });
+  return asset ? parseEmailContent(asset.content) : null;
+}
+
+export async function sendMatchedContactEmail(email: string, subject: string, body: string) {
+  await requireUser();
+  return sendEmail(email, subject, body);
 }
 
 // wa.me link prefilled with the given content for one specific contact —

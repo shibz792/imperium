@@ -10,6 +10,7 @@ import { districtForCity } from "@/lib/locations";
 import { applyMarkup } from "@/lib/property";
 import { downloadDriveFile, ensurePropertyDriveFolder, uploadToPropertyFolder, trashDriveFile, storageAccountIssue } from "@/lib/google";
 import { deleteGuarded } from "@/lib/deleteGuard";
+import crypto from "node:crypto";
 
 function str(fd: FormData, key: string): string | undefined {
   const v = fd.get(key);
@@ -316,4 +317,39 @@ export async function deleteProperty(id: string) {
   await writeAudit({ userId: admin.id, action: "DELETE", entityType: "property", entityId: id });
   revalidatePath("/properties");
   redirect("/properties");
+}
+
+// ---------------------------------------------------------------------------
+// Public share pages — the schema (SharePage) and the Marketing tab's list
+// UI already existed; nothing ever created a row or served /share/[slug].
+// ---------------------------------------------------------------------------
+
+export async function createSharePage(propertyId: string, formData: FormData) {
+  const user = await requireUser();
+  const password = str(formData, "password");
+  const expiresInDays = num(formData, "expiresInDays");
+  const watermarkClientName = str(formData, "watermarkClientName");
+
+  await prisma.sharePage.create({
+    data: {
+      propertyId,
+      slug: crypto.randomBytes(5).toString("hex"),
+      visibility: (str(formData, "visibility") === "PUBLIC" ? "PUBLIC" : "UNLISTED") as never,
+      password,
+      expiresAt: expiresInDays ? new Date(Date.now() + expiresInDays * 86_400_000) : undefined,
+      watermarkClientName,
+      hideOwnerContact: formData.get("hideOwnerContact") === "on",
+      hideExactLocation: formData.get("hideExactLocation") === "on",
+    },
+  });
+
+  await logActivity({ entityType: "property", propertyId, type: "SHARE_PAGE_CREATED", message: `${user.name} created a public share link.`, userId: user.id });
+  revalidatePath(`/properties/${propertyId}`);
+}
+
+export async function deleteSharePage(propertyId: string, id: string) {
+  const user = await requireUser();
+  await prisma.sharePage.delete({ where: { id } });
+  await logActivity({ entityType: "property", propertyId, type: "SHARE_PAGE_REVOKED", message: `${user.name} revoked a public share link.`, userId: user.id });
+  revalidatePath(`/properties/${propertyId}`);
 }

@@ -15,6 +15,9 @@ import { reconfirmRequirement, changeRequirementStatus, deleteRequirement } from
 import { createTask, setTaskStatus, deleteTask } from "../../tasks/actions";
 import { ConfirmSubmitButton } from "@/components/ConfirmSubmitButton";
 import { SubmitButton } from "@/components/SubmitButton";
+import { RequirementMarketingPanel } from "../RequirementMarketingPanel";
+import { whatsappCloudConfigured } from "@/lib/whatsapp";
+import { emailConfigured } from "@/lib/email";
 
 const TABS = [
   { key: "overview", label: "Overview" },
@@ -232,24 +235,28 @@ export default async function RequirementDetailPage({ params, searchParams }: { 
       )}
 
       {tab === "matches" && (
-        <SectionCard title={`Matching properties (${matches.length})`}>
-          {matches.length === 0 ? (
-            <EmptyState title="No qualifying properties" description="Hard filters (category, budget, size, location) excluded all current active listings." />
-          ) : (
-            <ul className="divide-y divide-black/6">
-              {matches.map((m) => (
-                <li key={m.property.id} className="flex items-center gap-4 py-3">
-                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border-2 border-current text-xs font-semibold text-ir-gold-dark tabular-nums">{m.result.score}</div>
-                  <div className="min-w-0 flex-1">
-                    <Link href={`/properties/${m.property.id}`} className="text-sm font-medium text-ir-navy hover:text-ir-gold-dark">{m.property.title}</Link>
-                    <p className="mt-0.5 truncate text-xs text-black/50">{explainMatch(m.result)}</p>
-                  </div>
-                  <Link href={`/matchmaker?requirementId=${id}`} className="shrink-0 text-xs font-medium text-ir-gold-dark hover:underline">Open in Matchmaker</Link>
-                </li>
-              ))}
-            </ul>
-          )}
-        </SectionCard>
+        <div className="space-y-5">
+          <SectionCard title={`Matching properties (${matches.length})`}>
+            {matches.length === 0 ? (
+              <EmptyState title="No qualifying properties" description="Hard filters (category, budget, size, location) excluded all current active listings." />
+            ) : (
+              <ul className="divide-y divide-black/6">
+                {matches.map((m) => (
+                  <li key={m.property.id} className="flex items-center gap-4 py-3">
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border-2 border-current text-xs font-semibold text-ir-gold-dark tabular-nums">{m.result.score}</div>
+                    <div className="min-w-0 flex-1">
+                      <Link href={`/properties/${m.property.id}`} className="text-sm font-medium text-ir-navy hover:text-ir-gold-dark">{m.property.title}</Link>
+                      <p className="mt-0.5 truncate text-xs text-black/50">{explainMatch(m.result)}</p>
+                    </div>
+                    <Link href={`/matchmaker?requirementId=${id}`} className="shrink-0 text-xs font-medium text-ir-gold-dark hover:underline">Open in Matchmaker</Link>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </SectionCard>
+
+          <RequirementMarketingPanel requirementId={id} cloudConfigured={whatsappCloudConfigured()} emailConfigured={emailConfigured()} />
+        </div>
       )}
 
       {tab === "deals" && (

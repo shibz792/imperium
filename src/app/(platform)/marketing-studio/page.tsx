@@ -3,6 +3,8 @@ import { requireRole } from "@/lib/auth";
 import { MARKETING_STUDIO_ROLES } from "@/lib/roles";
 import { groqConfigured } from "@/lib/groq";
 import { whatsappCloudConfigured } from "@/lib/whatsapp";
+import { emailConfigured } from "@/lib/email";
+import { FileText } from "lucide-react";
 import { PageHeader, Badge, EmptyState } from "@/components/ui";
 import { CONTENT_TYPE_LABELS } from "@/lib/marketing";
 import { MarketingStudioClient } from "./MarketingStudioClient";
@@ -29,7 +31,7 @@ export default async function MarketingStudioPage({ searchParams }: { searchPara
         description="One property record → channel-tuned copy for every format, AI-composed social image tiles from the real listing photo, and exactly who to send it to. Only approved facts are used."
       />
 
-      <MarketingStudioClient properties={orderedProperties} groqEnabled={groqConfigured()} cloudConfigured={whatsappCloudConfigured()} />
+      <MarketingStudioClient properties={orderedProperties} groqEnabled={groqConfigured()} cloudConfigured={whatsappCloudConfigured()} emailConfigured={emailConfigured()} />
 
       <h2 className="mb-3 mt-8 text-sm font-semibold text-ir-navy">Recent generations</h2>
       {recentAssets.length === 0 ? (
@@ -53,7 +55,12 @@ export default async function MarketingStudioPage({ searchParams }: { searchPara
                 </div>
               </div>
               <p className="whitespace-pre-line text-xs text-black/60">{a.content}</p>
-              {a.imageUrl && (
+              {a.imageUrl && a.contentType === "BROCHURE" && (
+                <a href={a.imageUrl} download className="mt-3 inline-flex items-center gap-1.5 rounded border border-black/10 bg-ir-ivory px-3 py-1.5 text-xs font-medium text-ir-gold-dark hover:bg-ir-gold/10">
+                  <FileText size={13} /> Download PDF brochure
+                </a>
+              )}
+              {a.imageUrl && (a.contentType === "SOCIAL_1_1" || a.contentType === "STORY_9_16") && (
                 // eslint-disable-next-line @next/next/no-img-element -- served from our own DB-backed route, not a static import
                 <img
                   src={a.imageUrl}

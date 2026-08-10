@@ -3,15 +3,15 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Sparkles, Layers, Copy, Check, Loader2, ImagePlus, Download } from "lucide-react";
-import { generateAsset, generateAllAssets, generateSocialImage } from "./actions";
+import { Sparkles, Layers, Copy, Check, Loader2, ImagePlus, Download, Rocket } from "lucide-react";
+import { generateAsset, generateAllAssets, generateSocialImage, propertiesNeedingCampaign } from "./actions";
 import { CONTENT_TYPE_LABELS, type ContentType } from "@/lib/marketing";
 import { MatchedAudiencePanel } from "./MatchedAudiencePanel";
 
 type PropertyOption = { id: string; title: string; propertyRef: string };
 const SOCIAL_TYPES: ContentType[] = ["SOCIAL_1_1", "STORY_9_16"];
 
-export function MarketingStudioClient({ properties, groqEnabled, cloudConfigured }: { properties: PropertyOption[]; groqEnabled: boolean; cloudConfigured: boolean }) {
+export function MarketingStudioClient({ properties, groqEnabled, cloudConfigured, emailConfigured }: { properties: PropertyOption[]; groqEnabled: boolean; cloudConfigured: boolean; emailConfigured: boolean }) {
   const [propertyId, setPropertyId] = useState(properties[0]?.id ?? "");
   const [contentType, setContentType] = useState<ContentType>("WHATSAPP");
   const [language, setLanguage] = useState<"EN" | "SI" | "TA">("EN");
@@ -21,8 +21,29 @@ export function MarketingStudioClient({ properties, groqEnabled, cloudConfigured
   const [batchPending, startBatchTransition] = useTransition();
   const [batchDone, setBatchDone] = useState<number | null>(null);
   const [imageState, setImageState] = useState<{ status: "idle" | "loading" | "done" | "error"; url?: string; error?: string }>({ status: "idle" });
+  const [portfolio, setPortfolio] = useState<{ status: "idle" | "running" | "done"; done: number; total: number; current?: string }>({ status: "idle", done: 0, total: 0 });
   const router = useRouter();
   const isSocial = SOCIAL_TYPES.includes(contentType);
+
+  // Sequential on purpose, driven from the client rather than one opaque
+  // server call — each property's own "generate all types" batch is
+  // already parallel internally, so running several properties at once on
+  // top of that risks Groq rate limits, and there'd be no way to show real
+  // per-property progress from a single all-or-nothing server action.
+  async function catchUpPortfolio() {
+    const targets = await propertiesNeedingCampaign();
+    if (targets.length === 0) {
+      setPortfolio({ status: "done", done: 0, total: 0 });
+      return;
+    }
+    setPortfolio({ status: "running", done: 0, total: targets.length, current: targets[0].title });
+    for (let i = 0; i < targets.length; i++) {
+      setPortfolio({ status: "running", done: i, total: targets.length, current: targets[i].title });
+      await generateAllAssets(targets[i].id, language).catch(() => undefined);
+    }
+    setPortfolio({ status: "done", done: targets.length, total: targets.length });
+    router.refresh();
+  }
 
   function generate() {
     if (!propertyId) return;
@@ -173,7 +194,38 @@ export function MarketingStudioClient({ properties, groqEnabled, cloudConfigured
         </div>
       )}
     </div>
-    {propertyId && <MatchedAudiencePanel key={propertyId} propertyId={propertyId} cloudConfigured={cloudConfigured} />}
+
+    <div className="ir-card mt-5 p-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="text-sm font-semibold text-ir-navy">Catch up the whole portfolio</h2>
+          <p className="mt-0.5 text-xs text-black/40">Every active listing with no approved marketing yet gets a full campaign, one property at a time.</p>
+        </div>
+        {portfolio.status !== "running" && (
+          <button onClick={catchUpPortfolio} className="ir-btn ir-btn-ghost shrink-0">
+            <Rocket size={15} /> Catch up portfolio
+          </button>
+        )}
+      </div>
+      {portfolio.status === "running" && (
+        <div className="mt-3">
+          <div className="mb-1.5 flex items-center justify-between text-xs text-black/50">
+            <span className="flex items-center gap-1.5"><Loader2 size={12} className="animate-spin" /> {portfolio.current}</span>
+            <span className="tabular-nums">{portfolio.done} / {portfolio.total}</span>
+          </div>
+          <div className="h-1.5 overflow-hidden rounded-full bg-black/8">
+            <div className="h-full rounded-full bg-ir-gold transition-all" style={{ width: `${(portfolio.done / Math.max(1, portfolio.total)) * 100}%` }} />
+          </div>
+        </div>
+      )}
+      {portfolio.status === "done" && (
+        <div className="mt-3 rounded border border-[color:var(--color-forest)]/30 bg-[color:var(--color-forest)]/10 px-3 py-2 text-xs text-[color:var(--color-forest)]">
+          {portfolio.total === 0 ? "Every active listing already has approved marketing content." : `Generated campaigns for ${portfolio.total} listing${portfolio.total === 1 ? "" : "s"} — review and approve each in Recent generations below.`}
+        </div>
+      )}
+    </div>
+
+    {propertyId && <MatchedAudiencePanel key={propertyId} propertyId={propertyId} cloudConfigured={cloudConfigured} emailConfigured={emailConfigured} />}
     </>
   );
 }

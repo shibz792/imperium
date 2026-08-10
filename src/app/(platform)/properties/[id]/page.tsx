@@ -10,7 +10,7 @@ import { LISTING_STATUS_TONE, LEGAL_STATUS_TONE, DEAL_STAGE_TONE, VIEWING_STATUS
 import { formatCurrency, formatDate, formatDateTime, titleCase, daysAgo } from "@/lib/format";
 import { completenessScore, isStale, primarySize, relevantAskingPrice, clientPrice, priceUnit, whatsAppMessage } from "@/lib/property";
 import { scoreMatch, explainMatch } from "@/lib/match";
-import { verifyProperty, changeListingStatus, setCoverPhoto, deletePropertyMedia, importPhotosFromDrive, deleteProperty } from "../actions";
+import { verifyProperty, changeListingStatus, setCoverPhoto, deletePropertyMedia, importPhotosFromDrive, deleteProperty, createSharePage, deleteSharePage } from "../actions";
 import { PropertyPhotoUploader } from "../PropertyPhotoUploader";
 import { GoogleDriveBrowser } from "@/components/GoogleDriveBrowser";
 import { createNote, deleteNote } from "../../notes/actions";
@@ -18,6 +18,8 @@ import { createTask, setTaskStatus, deleteTask } from "../../tasks/actions";
 import { ConfirmSubmitButton } from "@/components/ConfirmSubmitButton";
 import { NoteAiSuggestions } from "@/components/NoteAiSuggestions";
 import { SubmitButton } from "@/components/SubmitButton";
+import { CopyLinkButton } from "@/components/CopyLinkButton";
+import { appBaseUrl } from "@/lib/url";
 
 const CAN_DELETE_ANY_NOTE = ["SUPER_ADMIN", "DIRECTOR", "SALES_MANAGER"];
 
@@ -76,6 +78,7 @@ export default async function PropertyDetailPage({ params, searchParams }: { par
   // marketingAssets is already ordered createdAt desc — the first approved
   // WhatsApp generation, if any, is what actually gets copied everywhere.
   const approvedWhatsAppContent = property.marketingAssets.find((a) => a.contentType === "WHATSAPP" && a.approved)?.content;
+  const shareBaseUrl = appBaseUrl();
 
   const offers = property.deals.flatMap((d) => d.offers.map((o) => ({ ...o, deal: d })));
 
@@ -486,17 +489,63 @@ export default async function PropertyDetailPage({ params, searchParams }: { par
               ))}
             </ul>
           )}
-          {property.sharePages.length > 0 && (
-            <div className="mt-4 border-t border-black/6 pt-4">
-              <div className="ir-label mb-2">Share pages</div>
-              {property.sharePages.map((s) => (
-                <div key={s.id} className="flex items-center justify-between text-xs">
-                  <span>/share/{s.slug}</span>
-                  <Badge tone="gray">{titleCase(s.visibility)}</Badge>
-                </div>
-              ))}
-            </div>
-          )}
+          <div className="mt-4 border-t border-black/6 pt-4">
+            <div className="ir-label mb-2">Public share pages</div>
+            <p className="mb-3 text-xs text-black/40">
+              A clean, branded page anyone can open with no login — a better thing to text or email than a wall of copy. Also what a print brochure&apos;s QR code points to.
+            </p>
+            {property.sharePages.length > 0 && (
+              <ul className="mb-3 space-y-1.5">
+                {property.sharePages.map((s) => {
+                  const expired = s.expiresAt ? s.expiresAt < new Date() : false;
+                  return (
+                    <li key={s.id} className="flex items-center gap-2 rounded border border-black/8 px-2.5 py-1.5 text-xs">
+                      <Link href={`/share/${s.slug}`} target="_blank" className="min-w-0 flex-1 truncate font-medium text-ir-gold-dark hover:underline">
+                        {shareBaseUrl}/share/{s.slug}
+                      </Link>
+                      <Badge tone={expired ? "red" : "gray"}>{expired ? "Expired" : titleCase(s.visibility)}</Badge>
+                      {s.password && <Badge tone="navy">Password</Badge>}
+                      <span className="shrink-0 text-black/40">{s.viewCount} view{s.viewCount === 1 ? "" : "s"}</span>
+                      <CopyLinkButton text={`${shareBaseUrl}/share/${s.slug}`} />
+                      <form action={deleteSharePage.bind(null, id, s.id)}>
+                        <ConfirmSubmitButton confirmMessage="Revoke this share link? It will stop working immediately." title="Revoke link" className="flex h-6 w-6 items-center justify-center rounded text-black/25 hover:bg-black/[0.05] hover:text-[color:var(--color-brick)]">
+                          <Trash2 size={12} />
+                        </ConfirmSubmitButton>
+                      </form>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+            <form action={createSharePage.bind(null, id)} className="flex flex-wrap items-end gap-2.5">
+              <div>
+                <label className="ir-label mb-1 block">Visibility</label>
+                <select name="visibility" defaultValue="UNLISTED" className="ir-select !py-1.5 !text-xs">
+                  <option value="UNLISTED">Unlisted (link only)</option>
+                  <option value="PUBLIC">Public</option>
+                </select>
+              </div>
+              <div>
+                <label className="ir-label mb-1 block">Password (optional)</label>
+                <input name="password" className="ir-input !py-1.5 !text-xs" placeholder="Leave blank for none" />
+              </div>
+              <div>
+                <label className="ir-label mb-1 block">Expires in (days)</label>
+                <input name="expiresInDays" type="number" min="1" className="ir-input !w-24 !py-1.5 !text-xs" placeholder="Never" />
+              </div>
+              <div>
+                <label className="ir-label mb-1 block">Watermark name (optional)</label>
+                <input name="watermarkClientName" className="ir-input !py-1.5 !text-xs" placeholder="e.g. client's name" />
+              </div>
+              <label className="flex items-center gap-1.5 pb-2 text-xs text-black/60">
+                <input type="checkbox" name="hideOwnerContact" defaultChecked /> Hide owner contact
+              </label>
+              <label className="flex items-center gap-1.5 pb-2 text-xs text-black/60">
+                <input type="checkbox" name="hideExactLocation" defaultChecked /> Hide exact location
+              </label>
+              <SubmitButton className="ir-btn ir-btn-primary !py-1.5 !text-xs">Create link</SubmitButton>
+            </form>
+          </div>
         </SectionCard>
       )}
 
