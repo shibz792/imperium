@@ -1,15 +1,17 @@
 import Link from "next/link";
-import { Plus } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
 import { prisma } from "@/lib/prisma";
-import { requireRole, canSeeConfidential } from "@/lib/auth";
+import { requireRole, canSeeConfidential, isAdmin } from "@/lib/auth";
 import { SALES_TEAM_ROLES } from "@/lib/roles";
 import { PageHeader, Badge, EmptyState } from "@/components/ui";
 import { ClickableRow } from "@/components/ClickableRow";
 import { WhatsAppButton } from "@/components/WhatsAppButton";
+import { ConfirmSubmitButton } from "@/components/ConfirmSubmitButton";
 import { Pagination } from "@/components/Pagination";
 import { paginationParams, totalPages as computeTotalPages } from "@/lib/pagination";
 import { titleCase } from "@/lib/format";
 import type { Prisma } from "@/generated/prisma/client";
+import { deleteContact } from "./actions";
 
 const TYPE_TONE: Record<string, string> = { OWNER: "gold", BUYER: "blue", TENANT: "green", BROKER: "navy", DEVELOPER: "amber", INVESTOR: "gray", CORPORATE: "navy" };
 
@@ -77,6 +79,7 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
                 <th className="px-4 py-3 font-medium">Properties</th>
                 <th className="px-4 py-3 font-medium">Requirements</th>
                 <th className="px-4 py-3 font-medium">Agent</th>
+                <th className="px-4 py-3 font-medium" />
               </tr>
             </thead>
             <tbody>
@@ -97,6 +100,19 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
                   <td className="px-4 py-3 text-black/60">{c._count.ownedProperties}</td>
                   <td className="px-4 py-3 text-black/60">{c._count.requirements}</td>
                   <td className="px-4 py-3 text-black/60">{c.assignedAgent?.name ?? "-"}</td>
+                  <td className="px-4 py-3 text-right">
+                    {isAdmin(user) && (
+                      <form action={deleteContact.bind(null, c.id)}>
+                        <ConfirmSubmitButton
+                          confirmMessage={`Permanently delete "${c.name}"? This can't be undone.`}
+                          title="Delete contact"
+                          className="flex h-7 w-7 items-center justify-center rounded-full text-black/25 hover:bg-black/[0.05] hover:text-[color:var(--color-brick)]"
+                        >
+                          <Trash2 size={14} />
+                        </ConfirmSubmitButton>
+                      </form>
+                    )}
+                  </td>
                 </ClickableRow>
               ))}
             </tbody>

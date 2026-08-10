@@ -29,3 +29,7 @@ export const MARKETING_STUDIO_ROLES: Role[] = ["SUPER_ADMIN", "DIRECTOR", "SALES
 export const DOCUMENT_ROLES: Role[] = ["SUPER_ADMIN", "DIRECTOR", "SALES_MANAGER", "AGENT", "LEGAL", "FINANCE"];
 export const DEAL_ROLES: Role[] = ["SUPER_ADMIN", "DIRECTOR", "SALES_MANAGER", "AGENT", "FINANCE", "EXTERNAL_BROKER"];
 export const VIEWING_MATCH_ROLES: Role[] = ["SUPER_ADMIN", "DIRECTOR", "SALES_MANAGER", "AGENT", "EXTERNAL_BROKER"];
+// Every non-portal, non-client role — for the handful of pages (Properties,
+// Command Centre, Settings) that are meant to be reachable by anyone on
+// staff rather than scoped to one function.
+export const ALL_INTERNAL_ROLES: Role[] = ["SUPER_ADMIN", "DIRECTOR", "SALES_MANAGER", "AGENT", "MARKETING", "LEGAL", "FINANCE", "EXTERNAL_BROKER"];

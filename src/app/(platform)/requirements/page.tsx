@@ -1,21 +1,23 @@
 import Link from "next/link";
-import { Plus } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
 import { prisma } from "@/lib/prisma";
-import { requireRole } from "@/lib/auth";
+import { requireRole, isAdmin } from "@/lib/auth";
 import { SALES_TEAM_ROLES } from "@/lib/roles";
 import { PageHeader, Badge, EmptyState } from "@/components/ui";
 import { REQUIREMENT_STATUS_TONE, URGENCY_TONE } from "@/lib/badges";
 import { formatCurrency, formatDate, titleCase, daysAgoDate } from "@/lib/format";
 import { PROPERTY_SUBTYPES } from "@/lib/locations";
 import { ClickableRow } from "@/components/ClickableRow";
+import { ConfirmSubmitButton } from "@/components/ConfirmSubmitButton";
 import { Pagination } from "@/components/Pagination";
 import { paginationParams, totalPages as computeTotalPages } from "@/lib/pagination";
 import { CopyWhatsAppButton } from "@/components/CopyWhatsAppButton";
 import { whatsAppMessageForRequirement } from "@/lib/property";
 import type { Prisma } from "@/generated/prisma/client";
+import { deleteRequirement } from "./actions";
 
 export default async function RequirementsPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
-  await requireRole(SALES_TEAM_ROLES);
+  const user = await requireRole(SALES_TEAM_ROLES);
   const sp = await searchParams;
   const where: Prisma.RequirementWhereInput = {};
   if (sp.category) where.category = sp.category as never;
@@ -145,7 +147,20 @@ export default async function RequirementsPage({ searchParams }: { searchParams:
                     <td className="px-4 py-3 text-black/60">{r.assignedAgent?.name ?? "-"}</td>
                     <td className="px-4 py-3 text-black/50">{r.nextAction ? `${r.nextAction} (${formatDate(r.nextActionDate)})` : "-"}</td>
                     <td className="px-4 py-3 text-right">
-                      <CopyWhatsAppButton message={whatsAppMessageForRequirement(r)} />
+                      <div className="flex items-center justify-end gap-1">
+                        <CopyWhatsAppButton message={whatsAppMessageForRequirement(r)} />
+                        {isAdmin(user) && (
+                          <form action={deleteRequirement.bind(null, r.id)}>
+                            <ConfirmSubmitButton
+                              confirmMessage={`Permanently delete "${r.title}"? This can't be undone.`}
+                              title="Delete requirement"
+                              className="flex h-7 w-7 items-center justify-center rounded-full text-black/25 hover:bg-black/[0.05] hover:text-[color:var(--color-brick)]"
+                            >
+                              <Trash2 size={14} />
+                            </ConfirmSubmitButton>
+                          </form>
+                        )}
+                      </div>
                     </td>
                   </ClickableRow>
                 );

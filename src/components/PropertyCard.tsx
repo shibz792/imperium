@@ -1,4 +1,4 @@
-import { Building2, Landmark, Warehouse, TreePine } from "lucide-react";
+import { Building2, Landmark, Warehouse, TreePine, Trash2 } from "lucide-react";
 import type { Property } from "@/generated/prisma/client";
 import { Badge } from "@/components/ui";
 import { LISTING_STATUS_TONE } from "@/lib/badges";
@@ -6,6 +6,8 @@ import { formatCurrency, titleCase } from "@/lib/format";
 import { completenessScore, isStale, primarySize, priceUnit, relevantAskingPrice, whatsAppMessage } from "@/lib/property";
 import { ClickableCard } from "@/components/ClickableCard";
 import { CopyWhatsAppButton } from "@/components/CopyWhatsAppButton";
+import { ConfirmSubmitButton } from "@/components/ConfirmSubmitButton";
+import { deleteProperty } from "@/app/(platform)/properties/actions";
 
 const CATEGORY_ICON = {
   RESIDENTIAL: Building2,
@@ -36,9 +38,11 @@ function panelTone(seed: string) {
 export function PropertyCard({
   property,
   approvedWhatsApp,
+  canDelete = false,
 }: {
   property: Property & { assignedAgent?: { name: string } | null; media?: { url: string }[] };
   approvedWhatsApp?: string | null;
+  canDelete?: boolean;
 }) {
   const completeness = completenessScore(property);
   const stale = isStale(property);
@@ -73,7 +77,20 @@ export function PropertyCard({
       <div className="flex flex-1 flex-col p-4">
         <div className="mb-1 flex items-start justify-between gap-2">
           <h3 className="line-clamp-2 text-sm font-semibold leading-snug text-ir-navy group-hover:text-ir-gold-dark">{property.title}</h3>
-          <CopyWhatsAppButton message={whatsAppMessage(property, approvedWhatsApp)} className="-mt-1 -mr-1 shrink-0" />
+          <div className="-mt-1 -mr-1 flex shrink-0 items-center">
+            <CopyWhatsAppButton message={whatsAppMessage(property, approvedWhatsApp)} />
+            {canDelete && (
+              <form action={deleteProperty.bind(null, property.id)}>
+                <ConfirmSubmitButton
+                  confirmMessage={`Permanently delete "${property.title}"? This can't be undone, and only works if nothing else references it.`}
+                  title="Delete property"
+                  className="flex h-7 w-7 items-center justify-center rounded-full text-black/30 hover:bg-black/[0.06] hover:text-[color:var(--color-brick)]"
+                >
+                  <Trash2 size={14} />
+                </ConfirmSubmitButton>
+              </form>
+            )}
+          </div>
         </div>
         <p className="mb-3 text-xs text-black/45">{[property.city, property.district].filter(Boolean).join(", ") || "Location tbc"}</p>
 

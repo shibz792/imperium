@@ -1,15 +1,17 @@
 import Link from "next/link";
-import { Plus } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
 import { prisma } from "@/lib/prisma";
-import { canSeeFinance, requireRole } from "@/lib/auth";
+import { canSeeFinance, requireRole, isAdmin } from "@/lib/auth";
 import { DEAL_ROLES } from "@/lib/roles";
 import { PageHeader, Badge, EmptyState } from "@/components/ui";
 import { ClickableRow } from "@/components/ClickableRow";
+import { ConfirmSubmitButton } from "@/components/ConfirmSubmitButton";
 import { Pagination } from "@/components/Pagination";
 import { paginationParams, totalPages as computeTotalPages } from "@/lib/pagination";
 import { DEAL_STAGES } from "@/lib/badges";
 import { formatCurrency } from "@/lib/format";
 import { DealsKanban } from "./DealsKanban";
+import { deleteDeal } from "./actions";
 
 const COLUMN_LABELS: Record<string, string> = {
   NEW_INQUIRY: "New inquiry",
@@ -64,6 +66,7 @@ export default async function DealsPage({ searchParams }: { searchParams: Promis
       {view === "kanban" ? (
         <DealsKanban
           stages={DEAL_STAGES}
+          canDelete={isAdmin(user)}
           deals={deals.map((d) => ({
             id: d.id,
             stage: d.stage,
@@ -90,6 +93,7 @@ export default async function DealsPage({ searchParams }: { searchParams: Promis
                 <th className="px-4 py-3 font-medium">Stage</th>
                 <th className="px-4 py-3 font-medium">Probability</th>
                 <th className="px-4 py-3 font-medium">Agent</th>
+                <th className="px-4 py-3 font-medium" />
               </tr>
             </thead>
             <tbody>
@@ -104,6 +108,19 @@ export default async function DealsPage({ searchParams }: { searchParams: Promis
                   <td className="px-4 py-3"><Badge tone="navy">{COLUMN_LABELS[d.stage]}</Badge></td>
                   <td className="px-4 py-3 text-black/60">{d.probability}%</td>
                   <td className="px-4 py-3 text-black/60">{d.assignedAgent?.name ?? "-"}</td>
+                  <td className="px-4 py-3 text-right">
+                    {isAdmin(user) && (
+                      <form action={deleteDeal.bind(null, d.id)}>
+                        <ConfirmSubmitButton
+                          confirmMessage={`Permanently delete this deal (${d.dealRef})? This can't be undone.`}
+                          title="Delete deal"
+                          className="flex h-7 w-7 items-center justify-center rounded-full text-black/25 hover:bg-black/[0.05] hover:text-[color:var(--color-brick)]"
+                        >
+                          <Trash2 size={14} />
+                        </ConfirmSubmitButton>
+                      </form>
+                    )}
+                  </td>
                 </ClickableRow>
               ))}
             </tbody>

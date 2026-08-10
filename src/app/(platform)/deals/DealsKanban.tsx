@@ -2,9 +2,9 @@
 
 import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
-import { GripVertical } from "lucide-react";
+import { GripVertical, Trash2 } from "lucide-react";
 import { formatCurrency } from "@/lib/format";
-import { updateDealStage } from "./actions";
+import { updateDealStage, deleteDeal } from "./actions";
 
 const COLUMN_LABELS: Record<string, string> = {
   NEW_INQUIRY: "New inquiry",
@@ -45,11 +45,19 @@ export type KanbanDeal = {
   assignedAgent: { name: string } | null;
 };
 
-export function DealsKanban({ deals: initialDeals, stages }: { deals: KanbanDeal[]; stages: string[] }) {
+export function DealsKanban({ deals: initialDeals, stages, canDelete = false }: { deals: KanbanDeal[]; stages: string[]; canDelete?: boolean }) {
   const [deals, setDeals] = useState(initialDeals);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dragOverStage, setDragOverStage] = useState<string | null>(null);
   const [, startTransition] = useTransition();
+
+  function remove(deal: KanbanDeal) {
+    if (!window.confirm(`Permanently delete this deal (${deal.property.title})? This can't be undone.`)) return;
+    setDeals((prev) => prev.filter((d) => d.id !== deal.id));
+    startTransition(() => {
+      deleteDeal(deal.id);
+    });
+  }
 
   // useState(initialDeals) only reads that value on the very first mount —
   // if this component instance ever gets reused across a server refetch
@@ -153,6 +161,16 @@ export function DealsKanban({ deals: initialDeals, stages }: { deals: KanbanDeal
                       >
                         <GripVertical size={14} />
                       </span>
+                      {canDelete && (
+                        <button
+                          type="button"
+                          onClick={() => remove(d)}
+                          title="Delete deal"
+                          className="absolute right-8 top-1 z-10 flex h-6 w-6 items-center justify-center rounded text-black/15 opacity-0 transition-opacity hover:bg-black/5 hover:text-[color:var(--color-brick)] focus-visible:opacity-100 group-hover/card:opacity-100"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      )}
                       <Link href={`/deals/${d.id}`} className="block p-3 pr-8">
                         <div className="text-[0.8125rem] font-medium leading-snug text-ir-navy">{d.property.title}</div>
                         <div className="mt-1.5 flex items-center justify-between">

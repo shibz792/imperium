@@ -1,10 +1,15 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import { requireRole } from "@/lib/auth";
+import { SALES_TEAM_ROLES } from "@/lib/roles";
 import { PageHeader } from "@/components/ui";
 import { PropertyForm } from "../../PropertyForm";
 import { updateProperty } from "../../actions";
 
 export default async function EditPropertyPage({ params }: { params: Promise<{ id: string }> }) {
+  // Had no auth check at all — this fetched and rendered full property
+  // (owner contact details included) with no login required.
+  await requireRole(SALES_TEAM_ROLES);
   const { id } = await params;
   const [property, owners, agents] = await Promise.all([
     prisma.property.findUnique({ where: { id }, include: { collaborators: true } }),

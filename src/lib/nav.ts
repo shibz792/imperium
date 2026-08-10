@@ -1,5 +1,5 @@
 import type { Role } from "@/generated/prisma/client";
-import { SALES_TEAM_ROLES, AI_INTAKE_ROLES, SOURCING_ROLES, MARKETING_STUDIO_ROLES, DOCUMENT_ROLES, DEAL_ROLES, VIEWING_MATCH_ROLES } from "@/lib/roles";
+import { SALES_TEAM_ROLES, AI_INTAKE_ROLES, SOURCING_ROLES, MARKETING_STUDIO_ROLES, DOCUMENT_ROLES, DEAL_ROLES, VIEWING_MATCH_ROLES, ALL_INTERNAL_ROLES } from "@/lib/roles";
 
 export type NavSection = "Workspace" | "Tools" | "Records" | "Business";
 
@@ -10,8 +10,6 @@ export type NavItem = {
   section: NavSection;
   roles?: Role[]; // undefined = all internal roles
 };
-
-const INTERNAL: Role[] = ["SUPER_ADMIN", "DIRECTOR", "SALES_MANAGER", "AGENT", "MARKETING", "LEGAL", "FINANCE", "EXTERNAL_BROKER"];
 
 // Grouped by how often a role actually reaches for it, not alphabetically —
 // Workspace is the daily spine, Tools is "find/match something", Records is
@@ -50,6 +48,6 @@ export const NAV_ITEMS: NavItem[] = [
 ];
 
 export function navForRole(role: Role): NavItem[] {
-  if (!INTERNAL.includes(role)) return [];
+  if (!ALL_INTERNAL_ROLES.includes(role)) return [];
   return NAV_ITEMS.filter((item) => !item.roles || item.roles.includes(role));
 }

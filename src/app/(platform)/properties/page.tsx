@@ -1,6 +1,8 @@
 import Link from "next/link";
-import { Plus, LayoutGrid, TableProperties } from "lucide-react";
+import { Plus, LayoutGrid, TableProperties, Trash2 } from "lucide-react";
 import { prisma } from "@/lib/prisma";
+import { requireRole, isAdmin } from "@/lib/auth";
+import { ALL_INTERNAL_ROLES } from "@/lib/roles";
 import { PageHeader, Badge, EmptyState } from "@/components/ui";
 import { LISTING_STATUS_TONE } from "@/lib/badges";
 import { formatCurrency, formatDate, titleCase, daysAgoDate } from "@/lib/format";
@@ -9,11 +11,20 @@ import { ALL_DISTRICTS, PROPERTY_SUBTYPES } from "@/lib/locations";
 import { PropertyCard } from "@/components/PropertyCard";
 import { ClickableRow } from "@/components/ClickableRow";
 import { CopyWhatsAppButton } from "@/components/CopyWhatsAppButton";
+import { ConfirmSubmitButton } from "@/components/ConfirmSubmitButton";
 import { Pagination } from "@/components/Pagination";
 import { paginationParams, totalPages as computeTotalPages } from "@/lib/pagination";
 import type { Prisma } from "@/generated/prisma/client";
+import { deleteProperty } from "./actions";
 
 export default async function PropertiesPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
+  // This page had no auth check at all until now — every other list page
+  // (Deals, Contacts, Requirements, Viewings) calls requireRole; this one
+  // was missed, which also meant it never had a `user` to gate a delete
+  // button on. Properties is deliberately visible company-wide (see the
+  // "undefined = all internal roles" comment on its nav entry), so this
+  // gates on the full internal set, not one narrower group.
+  const user = await requireRole(ALL_INTERNAL_ROLES);
   const sp = await searchParams;
   const where: Prisma.PropertyWhereInput = {};
   if (sp.category) where.category = sp.category as never;
@@ -142,7 +153,7 @@ export default async function PropertiesPage({ searchParams }: { searchParams: P
       ) : view === "cards" ? (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {properties.map((p) => (
-            <PropertyCard key={p.id} property={p} approvedWhatsApp={p.marketingAssets[0]?.content} />
+            <PropertyCard key={p.id} property={p} approvedWhatsApp={p.marketingAssets[0]?.content} canDelete={isAdmin(user)} />
           ))}
         </div>
       ) : (
@@ -214,7 +225,20 @@ export default async function PropertiesPage({ searchParams }: { searchParams: P
                     <td className="px-4 py-3 text-black/60">{p.assignedAgent?.name ?? "-"}</td>
                     <td className="px-4 py-3 text-black/50">{formatDate(p.lastVerifiedDate)}</td>
                     <td className="px-4 py-3 text-right">
-                      <CopyWhatsAppButton message={whatsAppMessage(p, p.marketingAssets[0]?.content)} />
+                      <div className="flex items-center justify-end gap-1">
+                        <CopyWhatsAppButton message={whatsAppMessage(p, p.marketingAssets[0]?.content)} />
+                        {isAdmin(user) && (
+                          <form action={deleteProperty.bind(null, p.id)}>
+                            <ConfirmSubmitButton
+                              confirmMessage={`Permanently delete "${p.title}"? This can't be undone, and only works if nothing else references it.`}
+                              title="Delete property"
+                              className="flex h-7 w-7 items-center justify-center rounded-full text-black/25 hover:bg-black/[0.05] hover:text-[color:var(--color-brick)]"
+                            >
+                              <Trash2 size={14} />
+                            </ConfirmSubmitButton>
+                          </form>
+                        )}
+                      </div>
                     </td>
                   </ClickableRow>
                 );
