@@ -1,10 +1,18 @@
-import { CalendarClock, CloudDownload, CheckCircle2, HardDrive } from "lucide-react";
+import { CalendarClock, CloudDownload, CheckCircle2, HardDrive, TriangleAlert } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireUser, isAdmin } from "@/lib/auth";
 import { PageHeader, SectionCard } from "@/components/ui";
 import { formatDateTime } from "@/lib/format";
 import { googleOAuthConfigured } from "@/lib/google";
 import { disconnectGoogle, setStorageAccount } from "./actions";
+
+// Present since before drive.file (upload permission) existed in this
+// app's requested scope — an account connected before that was added only
+// has read access until it's reconnected and re-consents. Checked against
+// the scope actually granted at connect time, not assumed.
+function hasUploadScope(scope: string) {
+  return scope.includes("drive.file");
+}
 
 const ERROR_MESSAGES: Record<string, string> = {
   not_configured: "Google isn't configured on this deployment yet (missing GOOGLE_CLIENT_ID/SECRET).",
@@ -53,10 +61,19 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
                 <li className="flex items-center gap-1.5"><CalendarClock size={12} /> Your viewings and tasks push to your primary Google Calendar, and scheduling a viewing checks it for conflicts.</li>
                 <li className="flex items-center gap-1.5"><CloudDownload size={12} /> You can browse and import your own Drive files — they&apos;re saved into the company&apos;s shared Property Media Drive below, not kept in your account.</li>
               </ul>
+              {!hasUploadScope(account.scope) && (
+                <div className="mt-3 flex items-start gap-1.5 rounded border border-[#92601f4d] bg-[color:var(--color-bronze-tint)] px-2.5 py-2 text-xs text-[color:var(--color-bronze)]">
+                  <TriangleAlert size={13} className="mt-0.5 shrink-0" />
+                  <span>This connection predates upload permission and only has read access to Drive. Reconnect to grant it — nothing else about the connection changes.</span>
+                </div>
+              )}
             </div>
-            <form action={disconnectGoogle}>
-              <button type="submit" className="ir-btn ir-btn-ghost">Disconnect</button>
-            </form>
+            <div className="flex shrink-0 flex-col items-end gap-1.5">
+              <a href="/api/google/connect" className="ir-btn ir-btn-ghost">{hasUploadScope(account.scope) ? "Reconnect" : "Reconnect to grant upload access"}</a>
+              <form action={disconnectGoogle}>
+                <button type="submit" className="text-xs text-black/35 hover:text-[color:var(--color-brick)]">Disconnect</button>
+              </form>
+            </div>
           </div>
         ) : (
           <div className="flex flex-wrap items-center justify-between gap-4">
@@ -79,6 +96,14 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
               <span className="text-black/50">No storage account is set yet — property photo uploads won&apos;t work until an admin designates one below.</span>
             )}
           </div>
+          {storageAccount && !hasUploadScope(storageAccount.scope) && (
+            <div className="mb-3 flex items-start gap-1.5 rounded border border-[#92601f4d] bg-[color:var(--color-bronze-tint)] px-2.5 py-2 text-xs text-[color:var(--color-bronze)]">
+              <TriangleAlert size={13} className="mt-0.5 shrink-0" />
+              <span>
+                Uploads will fail: {storageAccount.email} was connected before upload permission existed and only has read access to Drive. The account owner needs to hit Reconnect above — the storage designation itself doesn&apos;t need to change.
+              </span>
+            </div>
+          )}
 
           {admin && (
             <div className="mt-4 border-t border-black/6 pt-4">

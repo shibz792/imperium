@@ -310,6 +310,22 @@ export async function getStorageAccountUserId(): Promise<string | null> {
   return account?.userId ?? null;
 }
 
+// Distinguishes "nobody's designated a storage account" from "one is
+// designated but its token predates the drive.file scope being added and
+// was never re-consented" — both show up identically as ensurePropertyDriveFolder
+// returning null, but only one of them is actually fixed by reconnecting.
+// Checked against the scope Google returned at grant time (stored on
+// connect), not by making a Drive call first — cheaper, and gives a
+// specific answer instead of a generic upload failure.
+export async function storageAccountIssue(): Promise<string | null> {
+  const account = await prisma.googleAccount.findFirst({ where: { isStorageAccount: true } });
+  if (!account) return "No Google Drive storage account is configured yet — an admin needs to connect one and designate it in Settings.";
+  if (!account.scope.includes("drive.file")) {
+    return `The Drive storage account (${account.email}) was connected before upload permission existed and only has read access — reconnect it in Settings to grant Drive write access.`;
+  }
+  return null;
+}
+
 export async function designateStorageAccount(userId: string): Promise<void> {
   await prisma.$transaction([
     prisma.googleAccount.updateMany({ data: { isStorageAccount: false } }),

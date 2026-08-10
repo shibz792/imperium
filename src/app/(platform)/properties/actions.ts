@@ -8,10 +8,8 @@ import { nextPropertyRef, nextContactRef } from "@/lib/refs";
 import { writeAudit, logActivity } from "@/lib/audit";
 import { districtForCity } from "@/lib/locations";
 import { applyMarkup } from "@/lib/property";
-import { downloadDriveFile, ensurePropertyDriveFolder, uploadToPropertyFolder, trashDriveFile } from "@/lib/google";
+import { downloadDriveFile, ensurePropertyDriveFolder, uploadToPropertyFolder, trashDriveFile, storageAccountIssue } from "@/lib/google";
 import { deleteGuarded } from "@/lib/deleteGuard";
-
-const NO_STORAGE_ACCOUNT_ERROR = "No Google Drive storage account is configured yet — an admin needs to connect one and designate it in Settings.";
 
 function str(fd: FormData, key: string): string | undefined {
   const v = fd.get(key);
@@ -228,7 +226,7 @@ export async function uploadPropertyPhotos(propertyId: string, formData: FormDat
   if (!property) return { ok: false, error: "Property not found." };
 
   const folderId = await ensurePropertyDriveFolder(propertyId, property.propertyRef, property.title);
-  if (!folderId) return { ok: false, error: NO_STORAGE_ACCOUNT_ERROR };
+  if (!folderId) return { ok: false, error: (await storageAccountIssue()) ?? "Could not access Drive storage — try again shortly." };
 
   const existingCount = await prisma.propertyMedia.count({ where: { propertyId } });
   let uploaded = 0;
@@ -284,7 +282,7 @@ export async function importPhotosFromDrive(propertyId: string, fileIds: string[
   if (!property) return { ok: false, error: "Property not found." };
 
   const folderId = await ensurePropertyDriveFolder(propertyId, property.propertyRef, property.title);
-  if (!folderId) return { ok: false, error: NO_STORAGE_ACCOUNT_ERROR };
+  if (!folderId) return { ok: false, error: (await storageAccountIssue()) ?? "Could not access Drive storage — try again shortly." };
 
   const existingCount = await prisma.propertyMedia.count({ where: { propertyId } });
   let imported = 0;
