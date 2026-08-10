@@ -2,30 +2,49 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Sparkles, Layers, Copy, Check, Loader2 } from "lucide-react";
-import { generateAsset, generateAllAssets } from "./actions";
+import Link from "next/link";
+import { Sparkles, Layers, Copy, Check, Loader2, ImagePlus, Download } from "lucide-react";
+import { generateAsset, generateAllAssets, generateSocialImage } from "./actions";
 import { CONTENT_TYPE_LABELS, type ContentType } from "@/lib/marketing";
 import { MatchedAudiencePanel } from "./MatchedAudiencePanel";
 
 type PropertyOption = { id: string; title: string; propertyRef: string };
+const SOCIAL_TYPES: ContentType[] = ["SOCIAL_1_1", "STORY_9_16"];
 
 export function MarketingStudioClient({ properties, groqEnabled, cloudConfigured }: { properties: PropertyOption[]; groqEnabled: boolean; cloudConfigured: boolean }) {
   const [propertyId, setPropertyId] = useState(properties[0]?.id ?? "");
   const [contentType, setContentType] = useState<ContentType>("WHATSAPP");
   const [language, setLanguage] = useState<"EN" | "SI" | "TA">("EN");
-  const [result, setResult] = useState<string | null>(null);
+  const [result, setResult] = useState<{ id: string; content: string; contentType: ContentType } | null>(null);
   const [copied, setCopied] = useState(false);
   const [pending, startTransition] = useTransition();
   const [batchPending, startBatchTransition] = useTransition();
   const [batchDone, setBatchDone] = useState<number | null>(null);
+  const [imageState, setImageState] = useState<{ status: "idle" | "loading" | "done" | "error"; url?: string; error?: string }>({ status: "idle" });
   const router = useRouter();
+  const isSocial = SOCIAL_TYPES.includes(contentType);
 
   function generate() {
     if (!propertyId) return;
     setResult(null);
+    setImageState({ status: "idle" });
     startTransition(async () => {
       const asset = await generateAsset(propertyId, contentType, language);
-      setResult(asset.content);
+      setResult({ id: asset.id, content: asset.content, contentType: asset.contentType as ContentType });
+      if (SOCIAL_TYPES.includes(asset.contentType as ContentType)) {
+        setImageState({ status: "loading" });
+        const img = await generateSocialImage(asset.id);
+        setImageState(img.ok ? { status: "done", url: img.imageUrl } : { status: "error", error: img.error });
+      }
+    });
+  }
+
+  function retryImage() {
+    if (!result) return;
+    setImageState({ status: "loading" });
+    startTransition(async () => {
+      const img = await generateSocialImage(result.id);
+      setImageState(img.ok ? { status: "done", url: img.imageUrl } : { status: "error", error: img.error });
     });
   }
 
@@ -35,13 +54,13 @@ export function MarketingStudioClient({ properties, groqEnabled, cloudConfigured
     startBatchTransition(async () => {
       const assets = await generateAllAssets(propertyId, language);
       setBatchDone(assets.length);
-      router.refresh(); // picks up the new rows in "Recent generations" below
+      router.refresh(); // picks up the new rows (text + composed images) in "Recent generations" below
     });
   }
 
   function copy() {
     if (!result) return;
-    navigator.clipboard.writeText(result);
+    navigator.clipboard.writeText(result.content);
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
   }
@@ -84,11 +103,11 @@ export function MarketingStudioClient({ properties, groqEnabled, cloudConfigured
           <button
             onClick={generateAll}
             disabled={batchPending || !propertyId}
-            title="Generate every content type at once for this property and language"
+            title="One click: every content type, plus both composed social image tiles"
             className="ir-btn ir-btn-ghost disabled:opacity-50"
           >
             {batchPending ? <Loader2 size={15} className="animate-spin" /> : <Layers size={15} />}
-            {batchPending ? "Generating all…" : "Generate all types"}
+            {batchPending ? "Generating campaign…" : "Generate full campaign"}
           </button>
           <button onClick={generate} disabled={pending || !propertyId} className="ir-btn ir-btn-gold px-5 disabled:opacity-50">
             {pending ? <Loader2 size={15} className="animate-spin" /> : <Sparkles size={15} />}
@@ -99,7 +118,7 @@ export function MarketingStudioClient({ properties, groqEnabled, cloudConfigured
 
       {batchDone !== null && (
         <div className="mt-3 rounded border border-[color:var(--color-forest)]/30 bg-[color:var(--color-forest)]/10 px-3 py-2 text-xs text-[color:var(--color-forest)]">
-          Generated all {batchDone} content types — review and approve each below, in Recent generations.
+          Generated all {batchDone} content types, including both social image tiles where a property photo was available — review and approve each below, in Recent generations.
         </div>
       )}
 
@@ -111,7 +130,46 @@ export function MarketingStudioClient({ properties, groqEnabled, cloudConfigured
               {copied ? <Check size={13} /> : <Copy size={13} />} {copied ? "Copied" : "Copy"}
             </button>
           </div>
-          <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed text-ir-navy">{result}</pre>
+          <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed text-ir-navy">{result.content}</pre>
+
+          {isSocial && (
+            <div className="mt-4 border-t border-black/8 pt-3">
+              {imageState.status === "loading" && (
+                <div className="flex items-center gap-2 text-xs text-black/40">
+                  <Loader2 size={13} className="animate-spin" /> Composing the image tile from the listing photo…
+                </div>
+              )}
+              {imageState.status === "error" && (
+                <div className="flex flex-wrap items-center justify-between gap-2 rounded border border-[color:var(--color-bronze)]/30 bg-[color:var(--color-bronze-tint)] px-3 py-2 text-xs text-[color:var(--color-bronze)]">
+                  <span>{imageState.error}</span>
+                  {imageState.error?.includes("photo") ? (
+                    <Link href={`/properties/${propertyId}`} className="font-medium underline">Add a photo →</Link>
+                  ) : (
+                    <button onClick={retryImage} className="font-medium underline">Retry</button>
+                  )}
+                </div>
+              )}
+              {imageState.status === "done" && imageState.url && (
+                <div className="flex items-start gap-3">
+                  {/* eslint-disable-next-line @next/next/no-img-element -- served from our own DB-backed route, not a static import */}
+                  <img
+                    src={imageState.url}
+                    alt="Composed social tile"
+                    className={`rounded border border-black/10 object-cover ${result.contentType === "STORY_9_16" ? "h-56 w-32" : "h-40 w-40"}`}
+                  />
+                  <div className="flex flex-col gap-2">
+                    <span className="ir-label">Image tile ready</span>
+                    <a href={imageState.url} download={`${result.id}.png`} className="ir-btn ir-btn-ghost !py-1 !text-xs w-fit">
+                      <Download size={12} /> Download
+                    </a>
+                    <button onClick={retryImage} className="flex w-fit items-center gap-1 text-xs text-black/40 hover:text-ir-navy">
+                      <ImagePlus size={12} /> Regenerate image
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>

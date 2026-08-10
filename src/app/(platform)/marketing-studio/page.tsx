@@ -25,8 +25,8 @@ export default async function MarketingStudioPage({ searchParams }: { searchPara
     <div>
       <PageHeader
         eyebrow="Marketing Studio"
-        title="Generate branded content"
-        description="One approved property record → premium descriptions, ad copy, brochures and captions. Only approved facts are used."
+        title="Generate a full campaign"
+        description="One property record → channel-tuned copy for every format, AI-composed social image tiles from the real listing photo, and exactly who to send it to. Only approved facts are used."
       />
 
       <MarketingStudioClient properties={orderedProperties} groqEnabled={groqConfigured()} cloudConfigured={whatsappCloudConfigured()} />
@@ -54,7 +54,7 @@ export default async function MarketingStudioPage({ searchParams }: { searchPara
               </div>
               <p className="whitespace-pre-line text-xs text-black/60">{a.content}</p>
               {a.imageUrl && (
-                // eslint-disable-next-line @next/next/no-img-element -- Drive-proxied bytes, not a static import Next can optimize
+                // eslint-disable-next-line @next/next/no-img-element -- served from our own DB-backed route, not a static import
                 <img
                   src={a.imageUrl}
                   alt={`Composed social tile for ${a.property.title}`}

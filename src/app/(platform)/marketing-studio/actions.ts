@@ -6,7 +6,7 @@ import { requireUser } from "@/lib/auth";
 import { logActivity } from "@/lib/audit";
 import { generateMarketingContent, CONTENT_TYPE_LABELS, type ContentType } from "@/lib/marketing";
 import { composeSocialImage, type SocialImageFormat } from "@/lib/marketingImage";
-import { streamPropertyPhoto, ensurePropertyDriveFolder, uploadToPropertyFolder, getStorageAccountUserId } from "@/lib/google";
+import { streamPropertyPhoto } from "@/lib/google";
 import { relevantAskingPrice, priceUnit } from "@/lib/property";
 import { formatCurrency } from "@/lib/format";
 import { scoreMatch } from "@/lib/match";
@@ -30,11 +30,22 @@ export async function generateAsset(propertyId: string, contentType: ContentType
 // One click instead of repeating property/type/language/Generate ten times
 // for a new listing — every content type, same property and language, in
 // parallel. Each still lands as its own row, reviewed/approved individually;
-// this only replaces the repetitive part of getting them made.
+// this only replaces the repetitive part of getting them made. A full
+// campaign means the two social tiles too, not just text — those are
+// composed automatically right after, silently skipped (not surfaced as an
+// error here) if the property has no usable photo yet; each row still has
+// its own manual "Generate image" retry in Recent generations.
 export async function generateAllAssets(propertyId: string, language: "EN" | "SI" | "TA") {
   await requireUser();
   const contentTypes = Object.keys(CONTENT_TYPE_LABELS) as ContentType[];
   const assets = await Promise.all(contentTypes.map((contentType) => generateAsset(propertyId, contentType, language)));
+
+  await Promise.all(
+    assets
+      .filter((a) => a.contentType === "SOCIAL_1_1" || a.contentType === "STORY_9_16")
+      .map((a) => generateSocialImage(a.id).catch(() => undefined)),
+  );
+
   return assets;
 }
 
@@ -85,6 +96,38 @@ export async function deleteMarketingAsset(id: string) {
 // text-to-image model. Only valid for SOCIAL_1_1 / STORY_9_16 rows, whose
 // content is two plain lines (headline, tagline) by construction — see
 // CHANNEL_SPECS in lib/marketing.ts.
+// Placeholder stand-in used by the old (pre-Drive) property form's default
+// value — a handful of early records have this saved as if it were a real
+// photo. Compositing the company logo as though it were the listing would
+// be actively wrong, not just unavailable, so it's explicitly excluded
+// rather than treated as a usable source.
+const PLACEHOLDER_MEDIA_URL = "/brand/logo-icon-gold.png";
+
+// Property photos have come from two pipelines over this app's life:
+// Drive-backed (driveFileId set, url is our own /api/drive-media proxy)
+// and an earlier direct-URL upload (Supabase storage, or anything else
+// external). Image generation shouldn't care which one a given photo came
+// from — only that it's a real photo.
+async function fetchSourcePhoto(url: string): Promise<Buffer | null> {
+  if (url.startsWith("/api/drive-media/")) {
+    const fileId = url.split("/").pop();
+    if (!fileId) return null;
+    const result = await streamPropertyPhoto(fileId);
+    return result?.buffer ?? null;
+  }
+  if (/^https?:\/\//.test(url)) {
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    return Buffer.from(await res.arrayBuffer());
+  }
+  return null; // relative paths that aren't the Drive proxy are static app assets, not property photos
+}
+
+// Composes the tile and stores the PNG bytes directly on the row in
+// Postgres — deliberately not routed through Google Drive. Property photos
+// may still live there, but generating a postable image is core platform
+// functionality and shouldn't depend on an external account being
+// connected. See src/lib/marketingImage.ts for what actually gets drawn.
 export async function generateSocialImage(assetId: string): Promise<{ ok: true; imageUrl: string } | { ok: false; error: string }> {
   const user = await requireUser();
   const asset = await prisma.marketingAsset.findUniqueOrThrow({ where: { id: assetId }, include: { property: true } });
@@ -92,22 +135,21 @@ export async function generateSocialImage(assetId: string): Promise<{ ok: true; 
     return { ok: false, error: "Image generation is only available for the 1:1 and 9:16 social formats." };
   }
 
-  const storageUserId = await getStorageAccountUserId();
-  if (!storageUserId) {
-    return { ok: false, error: "Connect Google Drive storage (Settings → Integrations) to generate postable images." };
-  }
-
-  const cover = await prisma.propertyMedia.findFirst({
-    where: { propertyId: asset.propertyId, type: "PHOTO" },
+  const candidates = await prisma.propertyMedia.findMany({
+    where: { propertyId: asset.propertyId, type: "PHOTO", url: { not: PLACEHOLDER_MEDIA_URL } },
     orderBy: { isCover: "desc" },
   });
-  if (!cover?.driveFileId) {
+  if (candidates.length === 0) {
     return { ok: false, error: "Add a property photo first — Media tab on the listing." };
   }
 
-  const photo = await streamPropertyPhoto(cover.driveFileId);
-  if (!photo) {
-    return { ok: false, error: "Could not load the property's photo from storage. Try again shortly." };
+  let photoBuffer: Buffer | null = null;
+  for (const candidate of candidates) {
+    photoBuffer = await fetchSourcePhoto(candidate.url);
+    if (photoBuffer) break;
+  }
+  if (!photoBuffer) {
+    return { ok: false, error: "Could not load the property's photo. Try again shortly." };
   }
 
   const [headline, tagline] = asset.content.split("\n");
@@ -115,20 +157,10 @@ export async function generateSocialImage(assetId: string): Promise<{ ok: true; 
   const priceLine = price ? `${formatCurrency(price, asset.property.currency)}${priceUnit(asset.property)}` : "Price on request";
   const format: SocialImageFormat = asset.contentType === "STORY_9_16" ? "9:16" : "1:1";
 
-  const png = await composeSocialImage(photo.buffer, { headline: headline ?? asset.property.title, tagline: tagline ?? "", priceLine, format });
+  const png = await composeSocialImage(photoBuffer, { headline: headline ?? asset.property.title, tagline: tagline ?? "", priceLine, format });
 
-  const folderId = await ensurePropertyDriveFolder(asset.propertyId, asset.property.propertyRef, asset.property.title);
-  if (!folderId) {
-    return { ok: false, error: "Could not access Drive storage. Confirm the storage account is still connected." };
-  }
-  const fileName = `${asset.property.propertyRef}-${asset.contentType.toLowerCase()}-${Date.now()}.png`;
-  const fileId = await uploadToPropertyFolder(folderId, png, fileName, "image/png");
-  if (!fileId) {
-    return { ok: false, error: "Upload to Drive failed. Try again shortly." };
-  }
-
-  const imageUrl = `/api/drive-media/${fileId}`;
-  await prisma.marketingAsset.update({ where: { id: assetId }, data: { imageDriveFileId: fileId, imageUrl } });
+  const imageUrl = `/api/marketing-image/${assetId}`;
+  await prisma.marketingAsset.update({ where: { id: assetId }, data: { imageData: new Uint8Array(png), imageMimeType: "image/png", imageUrl } });
 
   await logActivity({ entityType: "property", propertyId: asset.propertyId, type: "MARKETING_GENERATED", message: `${user.name} composed a ${format} social image.`, userId: user.id });
   revalidatePath("/marketing-studio");
