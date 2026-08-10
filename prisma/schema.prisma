@@ -711,6 +711,12 @@ model MarketingAsset {
   approvedById String?
   approvedBy   User?                @relation("MarketingApprover", fields: [approvedById], references: [id])
   createdAt    DateTime             @default(now())
+  // AI-composed social tile — only ever set for SOCIAL_1_1 / STORY_9_16
+  // rows. Same url/driveFileId convention as PropertyMedia: driveFileId is
+  // the real identity, url is the derived /api/drive-media/[fileId] path
+  // kept for convenience so render sites just read .imageUrl directly.
+  imageDriveFileId String?
+  imageUrl         String?
 
   @@index([propertyId])
   @@index([approvedById])

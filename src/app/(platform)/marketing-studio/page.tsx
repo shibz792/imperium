@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/auth";
 import { MARKETING_STUDIO_ROLES } from "@/lib/roles";
 import { groqConfigured } from "@/lib/groq";
+import { whatsappCloudConfigured } from "@/lib/whatsapp";
 import { PageHeader, Badge, EmptyState } from "@/components/ui";
 import { CONTENT_TYPE_LABELS } from "@/lib/marketing";
 import { MarketingStudioClient } from "./MarketingStudioClient";
@@ -28,7 +29,7 @@ export default async function MarketingStudioPage({ searchParams }: { searchPara
         description="One approved property record → premium descriptions, ad copy, brochures and captions. Only approved facts are used."
       />
 
-      <MarketingStudioClient properties={orderedProperties} groqEnabled={groqConfigured()} />
+      <MarketingStudioClient properties={orderedProperties} groqEnabled={groqConfigured()} cloudConfigured={whatsappCloudConfigured()} />
 
       <h2 className="mb-3 mt-8 text-sm font-semibold text-ir-navy">Recent generations</h2>
       {recentAssets.length === 0 ? (
@@ -42,16 +43,24 @@ export default async function MarketingStudioPage({ searchParams }: { searchPara
                 <Badge tone="navy">{CONTENT_TYPE_LABELS[a.contentType as keyof typeof CONTENT_TYPE_LABELS]}</Badge>
                 <Badge tone="gray">{a.language}</Badge>
                 <Badge tone={a.approved ? "green" : "amber"}>{a.approved ? `Approved by ${a.approvedBy?.name ?? ""}` : "Pending approval"}</Badge>
-                <div className="ml-auto flex items-center gap-2">
+                <div className="ml-auto flex items-start gap-2">
                   {!a.approved && (
                     <form action={approveAsset.bind(null, a.id)}>
                       <button type="submit" className="ir-btn ir-btn-gold !py-1 !text-xs">Approve</button>
                     </form>
                   )}
-                  <MarketingAssetActions id={a.id} content={a.content} approved={a.approved} />
+                  <MarketingAssetActions id={a.id} content={a.content} approved={a.approved} contentType={a.contentType as never} imageUrl={a.imageUrl} />
                 </div>
               </div>
               <p className="whitespace-pre-line text-xs text-black/60">{a.content}</p>
+              {a.imageUrl && (
+                // eslint-disable-next-line @next/next/no-img-element -- Drive-proxied bytes, not a static import Next can optimize
+                <img
+                  src={a.imageUrl}
+                  alt={`Composed social tile for ${a.property.title}`}
+                  className={`mt-3 rounded border border-black/10 ${a.contentType === "STORY_9_16" ? "h-64 w-36" : "h-48 w-48"} object-cover`}
+                />
+              )}
             </div>
           ))}
         </div>

@@ -5,10 +5,11 @@ import { useRouter } from "next/navigation";
 import { Sparkles, Layers, Copy, Check, Loader2 } from "lucide-react";
 import { generateAsset, generateAllAssets } from "./actions";
 import { CONTENT_TYPE_LABELS, type ContentType } from "@/lib/marketing";
+import { MatchedAudiencePanel } from "./MatchedAudiencePanel";
 
 type PropertyOption = { id: string; title: string; propertyRef: string };
 
-export function MarketingStudioClient({ properties, groqEnabled }: { properties: PropertyOption[]; groqEnabled: boolean }) {
+export function MarketingStudioClient({ properties, groqEnabled, cloudConfigured }: { properties: PropertyOption[]; groqEnabled: boolean; cloudConfigured: boolean }) {
   const [propertyId, setPropertyId] = useState(properties[0]?.id ?? "");
   const [contentType, setContentType] = useState<ContentType>("WHATSAPP");
   const [language, setLanguage] = useState<"EN" | "SI" | "TA">("EN");
@@ -46,6 +47,7 @@ export function MarketingStudioClient({ properties, groqEnabled }: { properties:
   }
 
   return (
+    <>
     <div className="ir-card p-5">
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <div>
@@ -113,5 +115,7 @@ export function MarketingStudioClient({ properties, groqEnabled }: { properties:
         </div>
       )}
     </div>
+    {propertyId && <MatchedAudiencePanel key={propertyId} propertyId={propertyId} cloudConfigured={cloudConfigured} />}
+    </>
   );
 }
