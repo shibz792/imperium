@@ -291,6 +291,12 @@ function PropertyFields({ fields, set, draft }: { fields: Record<string, unknown
       <FieldRow label="Description — full extracted text, edit as needed" className="col-span-2">
         <textarea rows={3} className="ir-input !text-xs" value={(fields.description as string) ?? ""} onChange={(e) => set("description", e.target.value)} />
       </FieldRow>
+      <FieldRow label="Other details — anything that didn't fit above" className="col-span-2">
+        <textarea rows={2} className="ir-input !text-xs" value={(fields.otherDetails as string) ?? ""} onChange={(e) => set("otherDetails", e.target.value)} />
+      </FieldRow>
+      <FieldRow label="Owner's requests / conditions" className="col-span-2">
+        <textarea rows={2} className="ir-input !text-xs" value={(fields.customerRequests as string) ?? ""} onChange={(e) => set("customerRequests", e.target.value)} />
+      </FieldRow>
       <FeatureTags label="Features" value={(fields.features as Record<string, unknown>) ?? {}} onChange={(v) => set("features", v)} />
     </div>
   );
@@ -382,6 +388,12 @@ function RequirementFields({ fields, set, draft }: { fields: Record<string, unkn
       </FieldRow>
       <FieldRow label="Notes — full extracted text, edit as needed" className="col-span-2">
         <textarea rows={3} className="ir-input !text-xs" value={(fields.notes as string) ?? ""} onChange={(e) => set("notes", e.target.value)} />
+      </FieldRow>
+      <FieldRow label="Other details — anything that didn't fit above" className="col-span-2">
+        <textarea rows={2} className="ir-input !text-xs" value={(fields.otherDetails as string) ?? ""} onChange={(e) => set("otherDetails", e.target.value)} />
+      </FieldRow>
+      <FieldRow label="Client's specific requests" className="col-span-2">
+        <textarea rows={2} className="ir-input !text-xs" value={(fields.customerRequests as string) ?? ""} onChange={(e) => set("customerRequests", e.target.value)} />
       </FieldRow>
       <FeatureTags label="Required features" value={(fields.requiredFeatures as Record<string, unknown>) ?? {}} onChange={(v) => set("requiredFeatures", v)} />
     </div>

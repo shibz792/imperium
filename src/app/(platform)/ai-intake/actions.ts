@@ -56,14 +56,18 @@ async function findOrCreateContact(
   return contact.id;
 }
 
-// Deterministic, not model-dependent: guarantees a second phone number
-// survives into the record even though there's no dedicated column for it,
-// rather than relying on the LLM to remember to mention it in prose
-// (testing showed it doesn't reliably do that on its own).
-function withAlternatePhone(text: string | undefined, alternatePhone: string | undefined): string | undefined {
-  if (!alternatePhone) return text;
-  const line = `Alternate phone: ${alternatePhone}`;
-  return text ? `${text}\n\n${line}` : line;
+// Deterministic, not model-dependent: guarantees these survive into the
+// record even though none of them has its own column — alternatePhone,
+// otherDetails and customerRequests are all captured as their own labeled
+// fields in the review UI so they're visible before approval, then folded
+// into the one free-text field the record actually has (description /
+// confidentialNotes) as clearly headed sections on approve, rather than
+// relying on the LLM to remember to work them into prose unprompted
+// (testing showed a second phone number didn't survive that way reliably).
+function appendSections(base: string | undefined, sections: { label: string; value: string | undefined }[]): string | undefined {
+  const blocks = sections.filter((s) => s.value?.trim()).map((s) => `${s.label}:\n${s.value}`);
+  const parts = [base, ...blocks].filter((p): p is string => Boolean(p?.trim()));
+  return parts.length ? parts.join("\n\n") : undefined;
 }
 
 export async function approvePropertyDraft(
@@ -85,7 +89,11 @@ export async function approvePropertyDraft(
     data: {
       propertyRef: await nextPropertyRef(),
       title: fields.title || `${fields.subtype ?? "Property"} in ${fields.city ?? "location tbc"}`,
-      description: withAlternatePhone(fields.description ?? sourceExcerpt, fields.alternatePhone),
+      description: appendSections(fields.description ?? sourceExcerpt, [
+        { label: "Other details", value: fields.otherDetails },
+        { label: "Owner's requests/conditions", value: fields.customerRequests },
+        { label: "Alternate phone", value: fields.alternatePhone },
+      ]),
       category: (fields.category ?? "RESIDENTIAL") as never,
       subtype: fields.subtype ?? "House",
       transactionType: (fields.transactionType ?? "SALE") as never,
@@ -149,7 +157,11 @@ export async function approveRequirementDraft(fields: RequirementDraftFields, so
       quality: "UNVERIFIED",
       status: "NEW",
       source: origin?.source ?? "Imperium AI Intake",
-      confidentialNotes: withAlternatePhone(fields.notes && fields.notes !== sourceExcerpt ? fields.notes : undefined, fields.alternatePhone),
+      confidentialNotes: appendSections(fields.notes && fields.notes !== sourceExcerpt ? fields.notes : undefined, [
+        { label: "Other details", value: fields.otherDetails },
+        { label: "Client's specific requests", value: fields.customerRequests },
+        { label: "Alternate phone", value: fields.alternatePhone },
+      ]),
       lastContacted: new Date(),
       assignedAgentId: user.id,
     } as never,

@@ -40,6 +40,20 @@ export type PropertyDraftFields = {
   // page already treat a truthy string/number the same as `true`.
   features?: Record<string, boolean | string | number>;
   description?: string;
+  // The true last-resort bucket — anything real that doesn't belong in the
+  // narrative description and isn't a property feature (procedural/back-
+  // office context: co-owners who also need to sign, a tenant's lease
+  // timeline, documents still pending, etc). Kept separate from
+  // description so the description stays a clean, readable narrative
+  // instead of a dumping ground. approvePropertyDraft appends this to the
+  // property's description as its own labeled section on approve.
+  otherDetails?: string;
+  // What the OWNER specifically asked for or conditioned the deal on, in
+  // their own words — "only serious buyers", "needs 2 months to vacate
+  // after sale", "wants to meet the buyer before accepting an offer".
+  // Distinct from otherDetails: this is specifically the owner's stated
+  // requests/conditions, not general context.
+  customerRequests?: string;
 };
 
 export type RequirementDraftFields = {
@@ -59,6 +73,14 @@ export type RequirementDraftFields = {
   urgency?: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
   intendedUse?: string;
   notes?: string;
+  otherDetails?: string; // see the comment on PropertyDraftFields.otherDetails
+  // Specific asks, conditions or preferences the CLIENT stated in their own
+  // words during the conversation — "no ground floor", "must close within
+  // 3 weeks", "wants to meet the seller before deciding", "doesn't want to
+  // deal with the current tenant directly". Different from the structured
+  // requirement fields (budget/location/size): this is the texture of how
+  // they asked, not just the fact itself.
+  customerRequests?: string;
 };
 
 // A note-derived follow-up — deliberately much thinner than the property/

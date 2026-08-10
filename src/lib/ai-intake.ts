@@ -24,11 +24,20 @@ Rules:
 
 DO NOT LOSE INFORMATION. This is the most important rule and overrides brevity:
 - "If a field is missing or uncertain, omit it — do not invent data" applies ONLY to the named structured fields (city, price, bedrooms, etc.) — never fabricate a number or fact that wasn't stated. It does NOT mean discarding real information the source text actually contains just because it doesn't fit one of those named fields.
-- Every concrete fact mentioned in the source text must end up somewhere in the draft: in a named field if there's a match, in "features"/"requiredFeatures" if it's a property detail without its own field, or in "description"/"notes" otherwise. Nothing gets silently dropped.
-- "description" (property) and "notes" (requirement) must be a complete, faithful rewrite of everything in the source text relevant to that item — reworded for clarity, never shortened into a summary. Keep every condition, nuance, timing detail, negotiation term, and specific circumstance the source mentions (e.g. "flexible on move-in date", "seller relocating end of month", "prefers tenants without pets", "price includes furniture", a second phone number, a specific unit/floor).
+- Every concrete fact mentioned in the source text must end up somewhere in the draft: in a named field if there's a match, in "features"/"requiredFeatures" if it's a property/requirement attribute without its own field, in "otherDetails" if it's real but doesn't belong in any of those (procedural or back-office context — a co-owner who also needs to sign, a tenant's lease timeline, documents still pending, why the owner is selling), or in "customerRequests" if it's something the client/owner specifically asked for or conditioned the deal on. Nothing gets silently dropped, and nothing gets stuffed into "description"/"notes" just because there's nowhere else obvious to put it — that's what otherDetails and customerRequests are for.
+- "description" (property) and "notes" (requirement) are the readable narrative about the property or the search itself — reworded for clarity, never shortened into a summary, but not a dumping ground for miscellaneous facts. Keep it to what the property/requirement actually is.
+- "otherDetails": the true catch-all. Anything real the source mentions that doesn't fit a named field, isn't a feature, and isn't part of the core narrative. Never omit a real fact just because none of the other fields fit it — put it here instead.
+- "customerRequests": specific asks, conditions or preferences the client/owner stated in their own words — "no ground floor", "must close within 3 weeks", "wants to meet the seller before deciding", "doesn't want to deal with the current tenant directly", "only serious buyers", "needs 2 months to vacate after sale". This is about the texture of what they asked for, not the same as the structured requirement fields (budget/location/size) which capture the fact itself.
 - If some context in the source applies to more than one item (a shared instruction, or a detail mentioned once but relevant to several listings/requirements in the same message), include it in every draft it applies to rather than only the first.
 - "features"/"requiredFeatures" values: use \`true\` for a plain yes/no amenity ("pool": true). Use a string or number when the source gives a specific detail worth keeping ("parkingSpaces": 3, "furnishing": "semi-furnished", "floor": "3rd floor") instead of dropping that specificity down to a boolean.
+- Requirements have no bedrooms/bathrooms field of their own — "sizeMin"/"sizeMax" are floor area in sqft, NEVER bedroom count. A "3 bedroom apartment" requirement goes in "requiredFeatures" as {"bedrooms": 3}, not sizeMin/sizeMax: 3 — putting a bedroom count there would corrupt matching against real listings' actual floor areas.
 - If more than one phone number is given for the same person, put the clearest/primary one in ownerPhone/clientPhone and any other number(s) in "alternatePhone" (comma-separated if there's more than one) — never drop a phone number just because there's already one in the structured field.
+
+WHATSAPP CONVERSATIONS specifically (multiple speaker turns, names, timestamps, back-and-forth rather than one continuous listing description):
+- Read it as a conversation, not a single blob. Work out who is the agent/broker and who is the customer (the owner, buyer, or tenant) from context — greetings, who's asking questions vs answering them, phone numbers already known to be the agent's.
+- Only extract what the CUSTOMER said as facts about the property or requirement. The agent's own questions, suggestions, or filler ("sure, let me check", "I'll send some options") are not facts to extract.
+- If the customer changes or corrects something mid-conversation (a budget that goes up, a location that gets dropped, a date that moves), use their final, latest-stated value in the structured fields — but if the change itself is useful context (e.g. "increased budget after seeing initial options" explains why a number looks unusual), note that in otherDetails rather than silently overwriting with no trace.
+- A customer's own words expressing a preference or condition — not just a fact — belong in customerRequests, even if they're phrased casually ("tbh I don't really want ground floor", "would prefer not to deal with the tenant directly").
 
 Return strict JSON only, matching this shape:
 {
@@ -49,7 +58,8 @@ Return strict JSON only, matching this shape:
         "sizeSqft": number, "sizePerches": number, "sizeAcres": number,
         "totalPrice": number, "monthlyRental": number, "annualLeaseValue": number, "currency": "LKR",
         "bedrooms": number, "bathrooms": number, "floors": number, "priceNegotiable": boolean, "landmark": string,
-        "features": { [key: string]: boolean | string | number }, "description": string
+        "features": { [key: string]: boolean | string | number }, "description": string,
+        "otherDetails": string, "customerRequests": string
         // for kind=requirement:
         "clientName": string, "clientPhone": string, "alternatePhone": string, "title": string,
         "dealType": "BUY"|"RENT"|"LEASE",
@@ -57,7 +67,7 @@ Return strict JSON only, matching this shape:
         "locations": string[], "sizeMin": number, "sizeMax": number,
         "budgetMin": number, "budgetMax": number,
         "requiredFeatures": { [key: string]: boolean | string | number }, "urgency": "LOW"|"MEDIUM"|"HIGH"|"CRITICAL",
-        "intendedUse": string, "notes": string
+        "intendedUse": string, "notes": string, "otherDetails": string, "customerRequests": string
       }
     }
   ]
