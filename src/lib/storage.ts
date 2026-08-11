@@ -42,6 +42,17 @@ export async function readStoredFile(storedName: string): Promise<Buffer> {
   return Buffer.from(await data.arrayBuffer());
 }
 
+// Best-effort — a Document row should never fail to delete just because
+// the underlying Supabase object is already gone or the bucket call
+// errors; the DB row is the source of truth for the app, storage cleanup
+// is just tidying up after it, never blocking it.
+export async function deleteStoredFile(storedName: string): Promise<void> {
+  await client()
+    .storage.from(BUCKET)
+    .remove([storedName])
+    .catch(() => {});
+}
+
 // Property photos used to live in a separate public Supabase bucket here.
 // They now live in the company's shared Google Drive instead (see
 // lib/google.ts's uploadToPropertyFolder / streamPropertyPhoto) — nowhere

@@ -13,6 +13,10 @@ import { Pagination } from "@/components/Pagination";
 import { paginationParams, totalPages as computeTotalPages } from "@/lib/pagination";
 import { CopyWhatsAppButton } from "@/components/CopyWhatsAppButton";
 import { whatsAppMessageForRequirement } from "@/lib/property";
+import { SelectionProvider } from "@/components/selection/SelectionContext";
+import { RowCheckbox } from "@/components/selection/RowCheckbox";
+import { SelectAllCheckbox } from "@/components/selection/SelectAllCheckbox";
+import { RequirementsBulkActions, type RequirementExportRow } from "./RequirementsBulkActions";
 import type { Prisma } from "@/generated/prisma/client";
 import { deleteRequirement } from "./actions";
 
@@ -38,7 +42,7 @@ export default async function RequirementsPage({ searchParams }: { searchParams:
   }
 
   const { page, skip, take } = paginationParams(sp);
-  const [requirements, total] = await Promise.all([
+  const [requirements, total, agents] = await Promise.all([
     prisma.requirement.findMany({
       where,
       include: { client: true, assignedAgent: true },
@@ -47,8 +51,28 @@ export default async function RequirementsPage({ searchParams }: { searchParams:
       take,
     }),
     prisma.requirement.count({ where }),
+    prisma.user.findMany({ where: { role: { in: ["AGENT", "SALES_MANAGER", "DIRECTOR", "SUPER_ADMIN"] }, active: true }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
   ]);
   const pages = computeTotalPages(total);
+  const qs = new URLSearchParams(Object.entries(sp).filter(([, v]) => v) as [string, string][]).toString();
+
+  // Pre-redacted for CSV export — client phone/email deliberately excluded,
+  // matching what this table already shows on screen (client name only).
+  const exportRows: RequirementExportRow[] = requirements.map((r) => {
+    const locations = Array.isArray(r.preferredLocationsJson) ? (r.preferredLocationsJson as string[]) : [];
+    return {
+      id: r.id,
+      requirementRef: r.requirementRef,
+      title: r.title,
+      clientName: r.client.name,
+      budget: r.budgetMax ? `up to ${formatCurrency(r.budgetMax)}` : r.budgetMin ? `from ${formatCurrency(r.budgetMin)}` : "",
+      locations: locations.join(", "),
+      status: titleCase(r.status),
+      urgency: titleCase(r.urgency),
+      agent: r.assignedAgent?.name ?? "",
+      nextAction: r.nextAction ? `${r.nextAction} (${formatDate(r.nextActionDate)})` : "",
+    };
+  });
 
   return (
     <div>
@@ -113,10 +137,13 @@ export default async function RequirementsPage({ searchParams }: { searchParams:
       {requirements.length === 0 ? (
         <EmptyState title="No requirements match these filters" />
       ) : (
+        <SelectionProvider ids={requirements.map((r) => r.id)} key={`${page}-${qs}`}>
+        <RequirementsBulkActions rows={exportRows} agents={agents} canDelete={isAdmin(user)} />
         <div className="ir-card overflow-x-auto">
           <table className="w-full min-w-[900px] text-left text-sm">
             <thead>
               <tr className="border-b border-black/8 text-[0.7rem] uppercase tracking-wide text-black/40">
+                <th className="px-4 py-3 font-medium"><SelectAllCheckbox /></th>
                 <th className="px-4 py-3 font-medium">Requirement</th>
                 <th className="px-4 py-3 font-medium">Client</th>
                 <th className="px-4 py-3 font-medium">Budget</th>
@@ -133,6 +160,7 @@ export default async function RequirementsPage({ searchParams }: { searchParams:
                 const locations = Array.isArray(r.preferredLocationsJson) ? (r.preferredLocationsJson as string[]) : [];
                 return (
                   <ClickableRow key={r.id} href={`/requirements/${r.id}`} className="border-b border-black/6 last:border-0 hover:bg-black/[0.015]">
+                    <td className="px-4 py-3"><RowCheckbox id={r.id} /></td>
                     <td className="px-4 py-3">
                       <Link href={`/requirements/${r.id}`} className="font-medium text-ir-navy hover:text-ir-gold-dark">{r.title}</Link>
                       <div className="mt-0.5 text-[0.7rem] text-black/40">{r.requirementRef} · {titleCase(r.type)}</div>
@@ -168,6 +196,7 @@ export default async function RequirementsPage({ searchParams }: { searchParams:
             </tbody>
           </table>
         </div>
+        </SelectionProvider>
       )}
 
       <Pagination page={page} totalPages={pages} total={total} basePath="/requirements" searchParams={sp} />

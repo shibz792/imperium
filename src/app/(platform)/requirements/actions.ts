@@ -11,6 +11,7 @@ import { scoreMatch } from "@/lib/match";
 import { buildClientDigest, buildBrokerBroadcast } from "@/lib/requirementMarketing";
 import { sendWhatsAppMessage } from "@/lib/whatsapp";
 import { sendEmail } from "@/lib/email";
+import type { BulkActionResult } from "@/lib/bulk";
 
 function str(fd: FormData, key: string): string | undefined {
   const v = fd.get(key);
@@ -165,6 +166,87 @@ export async function deleteRequirement(id: string) {
   await writeAudit({ userId: admin.id, action: "DELETE", entityType: "requirement", entityId: id });
   revalidatePath("/requirements");
   redirect("/requirements");
+}
+
+// ---------------------------------------------------------------------------
+// Bulk actions — same gating conventions as the single-row equivalents
+// above (delete stays admin-only via deleteGuarded; status/reassign stay
+// open to any signed-in viewer of this list). See properties/actions.ts's
+// bulk actions for the identical pattern this mirrors.
+// ---------------------------------------------------------------------------
+
+export async function bulkDeleteRequirements(ids: string[]): Promise<BulkActionResult> {
+  const admin = await requireRole(ADMIN_ROLES);
+  const succeeded: string[] = [];
+  const failed: { id: string; error: string }[] = [];
+
+  await Promise.all(
+    ids.map(async (id) => {
+      const result = await deleteGuarded(() => prisma.requirement.delete({ where: { id } }), "deals or matches on this requirement");
+      if (!result.ok) {
+        failed.push({ id, error: result.error });
+        return;
+      }
+      await writeAudit({ userId: admin.id, action: "DELETE", entityType: "requirement", entityId: id });
+      succeeded.push(id);
+    }),
+  );
+
+  if (succeeded.length) revalidatePath("/requirements");
+  return { succeeded, failed };
+}
+
+export async function bulkChangeRequirementStatus(ids: string[], status: string): Promise<BulkActionResult> {
+  const user = await requireUser();
+  const succeeded: string[] = [];
+  const failed: { id: string; error: string }[] = [];
+
+  await Promise.all(
+    ids.map(async (id) => {
+      try {
+        await prisma.requirement.update({ where: { id }, data: { status: status as never } });
+        await logActivity({ entityType: "requirement", requirementId: id, type: "STATUS", message: `${user.name} changed status to ${status.replace("_", " ")} (bulk update).`, userId: user.id });
+        await writeAudit({ userId: user.id, action: "STATUS_CHANGE", entityType: "requirement", entityId: id, after: { status } });
+        succeeded.push(id);
+      } catch (e) {
+        failed.push({ id, error: e instanceof Error ? e.message : "Update failed." });
+      }
+    }),
+  );
+
+  if (succeeded.length) {
+    revalidatePath("/requirements");
+    succeeded.forEach((id) => revalidatePath(`/requirements/${id}`));
+  }
+  return { succeeded, failed };
+}
+
+export async function bulkReassignRequirementAgent(ids: string[], agentId: string): Promise<BulkActionResult> {
+  const user = await requireUser();
+  const agent = await prisma.user.findUnique({ where: { id: agentId }, select: { name: true, active: true } });
+  if (!agent?.active) {
+    return { succeeded: [], failed: ids.map((id) => ({ id, error: "Selected agent is not valid or inactive." })) };
+  }
+
+  const succeeded: string[] = [];
+  const failed: { id: string; error: string }[] = [];
+
+  await Promise.all(
+    ids.map(async (id) => {
+      try {
+        const before = await prisma.requirement.findUnique({ where: { id }, select: { assignedAgentId: true } });
+        await prisma.requirement.update({ where: { id }, data: { assignedAgentId: agentId } });
+        await logActivity({ entityType: "requirement", requirementId: id, type: "REASSIGNED", message: `${user.name} reassigned this requirement to ${agent.name} (bulk update).`, userId: user.id });
+        await writeAudit({ userId: user.id, action: "REASSIGN", entityType: "requirement", entityId: id, before: { assignedAgentId: before?.assignedAgentId }, after: { assignedAgentId: agentId } });
+        succeeded.push(id);
+      } catch (e) {
+        failed.push({ id, error: e instanceof Error ? e.message : "Update failed." });
+      }
+    }),
+  );
+
+  if (succeeded.length) revalidatePath("/requirements");
+  return { succeeded, failed };
 }
 
 // ---------------------------------------------------------------------------

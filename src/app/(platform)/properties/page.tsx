@@ -14,6 +14,10 @@ import { CopyWhatsAppButton } from "@/components/CopyWhatsAppButton";
 import { ConfirmSubmitButton } from "@/components/ConfirmSubmitButton";
 import { Pagination } from "@/components/Pagination";
 import { paginationParams, totalPages as computeTotalPages } from "@/lib/pagination";
+import { SelectionProvider } from "@/components/selection/SelectionContext";
+import { RowCheckbox } from "@/components/selection/RowCheckbox";
+import { SelectAllCheckbox } from "@/components/selection/SelectAllCheckbox";
+import { PropertiesBulkActions, type PropertyExportRow } from "./PropertiesBulkActions";
 import type { Prisma } from "@/generated/prisma/client";
 import { deleteProperty } from "./actions";
 
@@ -45,7 +49,7 @@ export default async function PropertiesPage({ searchParams }: { searchParams: P
   }
 
   const { page, skip, take } = paginationParams(sp);
-  const [properties, total] = await Promise.all([
+  const [properties, total, agents] = await Promise.all([
     prisma.property.findMany({
       where,
       include: {
@@ -59,12 +63,32 @@ export default async function PropertiesPage({ searchParams }: { searchParams: P
       take,
     }),
     prisma.property.count({ where }),
+    prisma.user.findMany({ where: { role: { in: ["AGENT", "SALES_MANAGER", "DIRECTOR", "SUPER_ADMIN"] }, active: true }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
   ]);
   const pages = computeTotalPages(total);
 
   const view = sp.view === "cards" ? "cards" : "table";
   const qs = new URLSearchParams(Object.entries(sp).filter(([k, v]) => k !== "view" && v) as [string, string][]).toString();
   const withQs = (v: string) => `/properties?${qs ? qs + "&" : ""}view=${v}`;
+
+  // Pre-redacted for CSV export — no ownerMinPrice/markup/legal notes;
+  // exactly the fields this table already shows on screen, formatted the
+  // same way (relevantAskingPrice/formatCurrency), so export never adds a
+  // field the list itself doesn't already expose.
+  const exportRows: PropertyExportRow[] = properties.map((p) => ({
+    id: p.id,
+    propertyRef: p.propertyRef,
+    title: p.title,
+    category: titleCase(p.category),
+    subtype: p.subtype,
+    transactionType: titleCase(p.transactionType),
+    listingStatus: titleCase(p.listingStatus),
+    district: p.district ?? "",
+    city: p.city ?? "",
+    price: `${formatCurrency(relevantAskingPrice(p), p.currency)}${priceUnit(p)}`,
+    agent: p.assignedAgent?.name ?? "",
+    lastVerified: formatDate(p.lastVerifiedDate),
+  }));
 
   return (
     <div>
@@ -157,10 +181,13 @@ export default async function PropertiesPage({ searchParams }: { searchParams: P
           ))}
         </div>
       ) : (
+        <SelectionProvider ids={properties.map((p) => p.id)} key={`${page}-${qs}`}>
+        <PropertiesBulkActions rows={exportRows} agents={agents} canDelete={isAdmin(user)} />
         <div className="ir-card overflow-x-auto">
           <table className="w-full min-w-[900px] text-left text-sm">
             <thead>
               <tr className="border-b border-black/8 text-[0.7rem] uppercase tracking-wide text-black/40">
+                <th className="px-4 py-3 font-medium"><SelectAllCheckbox /></th>
                 <th className="px-4 py-3 font-medium">Property</th>
                 <th className="px-4 py-3 font-medium">Type</th>
                 <th className="px-4 py-3 font-medium">Location</th>
@@ -178,6 +205,7 @@ export default async function PropertiesPage({ searchParams }: { searchParams: P
                 const stale = isStale(p);
                 return (
                   <ClickableRow key={p.id} href={`/properties/${p.id}`} className="border-b border-black/6 last:border-0 hover:bg-black/[0.015]">
+                    <td className="px-4 py-3"><RowCheckbox id={p.id} /></td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2.5">
                         {p.media[0] ? (
@@ -246,6 +274,7 @@ export default async function PropertiesPage({ searchParams }: { searchParams: P
             </tbody>
           </table>
         </div>
+        </SelectionProvider>
       )}
 
       <Pagination page={page} totalPages={pages} total={total} basePath="/properties" searchParams={sp} />

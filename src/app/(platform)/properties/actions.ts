@@ -10,6 +10,7 @@ import { districtForCity } from "@/lib/locations";
 import { applyMarkup } from "@/lib/property";
 import { downloadDriveFile, ensurePropertyDriveFolder, uploadToPropertyFolder, trashDriveFile, storageAccountIssue } from "@/lib/google";
 import { deleteGuarded } from "@/lib/deleteGuard";
+import type { BulkActionResult } from "@/lib/bulk";
 import crypto from "node:crypto";
 
 function str(fd: FormData, key: string): string | undefined {
@@ -317,6 +318,89 @@ export async function deleteProperty(id: string) {
   await writeAudit({ userId: admin.id, action: "DELETE", entityType: "property", entityId: id });
   revalidatePath("/properties");
   redirect("/properties");
+}
+
+// ---------------------------------------------------------------------------
+// Bulk actions — for the multi-select toolbar on the Properties list page.
+// Same gating as their single-row equivalents (delete stays admin-only via
+// deleteGuarded; status/reassign stay open to any signed-in viewer of this
+// list, matching changeListingStatus's existing precedent). Can't redirect
+// mid-loop like the single-row actions do, so each returns a
+// BulkActionResult the client toolbar renders as a partial-failure summary.
+// ---------------------------------------------------------------------------
+
+export async function bulkDeleteProperties(ids: string[]): Promise<BulkActionResult> {
+  const admin = await requireRole(ADMIN_ROLES);
+  const succeeded: string[] = [];
+  const failed: { id: string; error: string }[] = [];
+
+  await Promise.all(
+    ids.map(async (id) => {
+      const result = await deleteGuarded(() => prisma.property.delete({ where: { id } }), "deals, viewings, documents or marketing content on this property");
+      if (!result.ok) {
+        failed.push({ id, error: result.error });
+        return;
+      }
+      await writeAudit({ userId: admin.id, action: "DELETE", entityType: "property", entityId: id });
+      succeeded.push(id);
+    }),
+  );
+
+  if (succeeded.length) revalidatePath("/properties");
+  return { succeeded, failed };
+}
+
+export async function bulkChangeListingStatus(ids: string[], status: string): Promise<BulkActionResult> {
+  const user = await requireUser();
+  const succeeded: string[] = [];
+  const failed: { id: string; error: string }[] = [];
+
+  await Promise.all(
+    ids.map(async (id) => {
+      try {
+        await prisma.property.update({ where: { id }, data: { listingStatus: status as never } });
+        await logActivity({ entityType: "property", propertyId: id, type: "STATUS", message: `${user.name} changed listing status to ${status.replace("_", " ")} (bulk update).`, userId: user.id });
+        await writeAudit({ userId: user.id, action: "STATUS_CHANGE", entityType: "property", entityId: id, after: { status } });
+        succeeded.push(id);
+      } catch (e) {
+        failed.push({ id, error: e instanceof Error ? e.message : "Update failed." });
+      }
+    }),
+  );
+
+  if (succeeded.length) {
+    revalidatePath("/properties");
+    succeeded.forEach((id) => revalidatePath(`/properties/${id}`));
+  }
+  return { succeeded, failed };
+}
+
+export async function bulkReassignPropertyAgent(ids: string[], agentId: string): Promise<BulkActionResult> {
+  const user = await requireUser();
+  const agent = await prisma.user.findUnique({ where: { id: agentId }, select: { name: true, active: true } });
+  if (!agent?.active) {
+    return { succeeded: [], failed: ids.map((id) => ({ id, error: "Selected agent is not valid or inactive." })) };
+  }
+
+  const succeeded: string[] = [];
+  const failed: { id: string; error: string }[] = [];
+
+  await Promise.all(
+    ids.map(async (id) => {
+      try {
+        const before = await prisma.property.findUnique({ where: { id }, select: { assignedAgentId: true } });
+        await prisma.property.update({ where: { id }, data: { assignedAgentId: agentId } });
+        await logActivity({ entityType: "property", propertyId: id, type: "REASSIGNED", message: `${user.name} reassigned this property to ${agent.name} (bulk update).`, userId: user.id });
+        await writeAudit({ userId: user.id, action: "REASSIGN", entityType: "property", entityId: id, before: { assignedAgentId: before?.assignedAgentId }, after: { assignedAgentId: agentId } });
+        succeeded.push(id);
+      } catch (e) {
+        failed.push({ id, error: e instanceof Error ? e.message : "Update failed." });
+      }
+    }),
+  );
+
+  if (succeeded.length) revalidatePath("/properties");
+  return { succeeded, failed };
 }
 
 // ---------------------------------------------------------------------------

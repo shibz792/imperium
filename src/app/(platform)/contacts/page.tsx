@@ -10,6 +10,10 @@ import { ConfirmSubmitButton } from "@/components/ConfirmSubmitButton";
 import { Pagination } from "@/components/Pagination";
 import { paginationParams, totalPages as computeTotalPages } from "@/lib/pagination";
 import { titleCase } from "@/lib/format";
+import { SelectionProvider } from "@/components/selection/SelectionContext";
+import { RowCheckbox } from "@/components/selection/RowCheckbox";
+import { SelectAllCheckbox } from "@/components/selection/SelectAllCheckbox";
+import { ContactsBulkActions, type ContactExportRow } from "./ContactsBulkActions";
 import type { Prisma } from "@/generated/prisma/client";
 import { deleteContact } from "./actions";
 
@@ -27,7 +31,7 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
   }
 
   const { page, skip, take } = paginationParams(sp);
-  const [contacts, total] = await Promise.all([
+  const [contacts, total, agents] = await Promise.all([
     prisma.contact.findMany({
       where,
       include: { assignedAgent: true, _count: { select: { ownedProperties: true, requirements: true } } },
@@ -36,8 +40,26 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
       take,
     }),
     prisma.contact.count({ where }),
+    prisma.user.findMany({ where: { role: { in: ["AGENT", "SALES_MANAGER", "DIRECTOR", "SUPER_ADMIN"] }, active: true }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
   ]);
   const pages = computeTotalPages(total);
+  const qs = new URLSearchParams(Object.entries(sp).filter(([, v]) => v) as [string, string][]).toString();
+
+  // Pre-redacted for CSV export — phone is only ever the real number when
+  // showConfidential already lets this viewer see it on screen; otherwise
+  // it's "Restricted" here too, exactly matching the table cell below.
+  const exportRows: ContactExportRow[] = contacts.map((c) => ({
+    id: c.id,
+    contactRef: c.contactRef,
+    name: c.name,
+    companyName: c.companyName ?? "",
+    contactType: titleCase(c.contactType),
+    phone: showConfidential ? c.phone : "Restricted",
+    email: c.email ?? "",
+    city: c.city ?? "",
+    district: c.district ?? "",
+    agent: c.assignedAgent?.name ?? "",
+  }));
 
   return (
     <div>
@@ -68,10 +90,13 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
       {contacts.length === 0 ? (
         <EmptyState title="No contacts match these filters" />
       ) : (
+        <SelectionProvider ids={contacts.map((c) => c.id)} key={`${page}-${qs}`}>
+        <ContactsBulkActions rows={exportRows} agents={agents} canDelete={isAdmin(user)} />
         <div className="ir-card overflow-x-auto">
           <table className="w-full min-w-[800px] text-left text-sm">
             <thead>
               <tr className="border-b border-black/8 text-[0.7rem] uppercase tracking-wide text-black/40">
+                <th className="px-4 py-3 font-medium"><SelectAllCheckbox /></th>
                 <th className="px-4 py-3 font-medium">Contact</th>
                 <th className="px-4 py-3 font-medium">Type</th>
                 <th className="px-4 py-3 font-medium">Phone</th>
@@ -85,6 +110,7 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
             <tbody>
               {contacts.map((c) => (
                 <ClickableRow key={c.id} href={`/contacts/${c.id}`} className="border-b border-black/6 last:border-0 hover:bg-black/[0.015]">
+                  <td className="px-4 py-3"><RowCheckbox id={c.id} /></td>
                   <td className="px-4 py-3">
                     <Link href={`/contacts/${c.id}`} className="font-medium text-ir-navy hover:text-ir-gold-dark">{c.name}</Link>
                     <div className="mt-0.5 text-[0.7rem] text-black/40">{c.contactRef}{c.companyName ? ` · ${c.companyName}` : ""}</div>
@@ -118,6 +144,7 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
             </tbody>
           </table>
         </div>
+        </SelectionProvider>
       )}
 
       <Pagination page={page} totalPages={pages} total={total} basePath="/contacts" searchParams={sp} />
