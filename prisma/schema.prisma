@@ -30,19 +30,19 @@ enum Role {
 }
 
 model User {
-  id           String   @id @default(cuid())
-  name         String
-  email        String   @unique
-  username     String   @unique
-  passwordHash String
-  role         Role
-  phone        String?
-  active       Boolean  @default(true)
+  id                      String             @id @default(cuid())
+  name                    String
+  email                   String             @unique
+  username                String             @unique
+  passwordHash            String
+  role                    Role
+  phone                   String?
+  active                  Boolean            @default(true)
   // Agent profile — spec §11/§14 "Agents" roster (title/specialty shown on
   // the public-facing profile card, territory used for demand-matching).
-  title        String?
-  bio          String?
-  territoryJson Json?
+  title                   String?
+  bio                     String?
+  territoryJson           Json?
   // The notification bell's badge only counts tasks/offers that showed up
   // after this — opening the bell moves it forward, same as any "mark all
   // read" pattern, without needing a separate read-state row per item.
@@ -52,29 +52,32 @@ model User {
   // the agency fee; FIXED is a flat LKR amount per deal. Null rate falls
   // back to the company default split (50%). A specific deal's commission
   // can still be adjusted afterward without touching this default.
-  commissionRateType CommissionRateType @default(PERCENT)
-  commissionRate      Float?
-  createdAt    DateTime @default(now())
+  commissionRateType      CommissionRateType @default(PERCENT)
+  commissionRate          Float?
+  createdAt               DateTime           @default(now())
 
-  assignedProperties   Property[]       @relation("PropertyAgent")
-  assignedContacts     Contact[]
-  assignedRequirements Requirement[]    @relation("RequirementAgent")
-  assignedDeals        Deal[]           @relation("DealAgent")
+  assignedProperties        Property[]          @relation("PropertyAgent")
+  assignedContacts          Contact[]
+  assignedRequirements      Requirement[]       @relation("RequirementAgent")
+  assignedDeals             Deal[]              @relation("DealAgent")
   // Multiple agents can work the same listing/requirement/deal together —
   // "assigned" is the primary owner, "collaborating" is everyone else on it.
-  collaboratingProperties   Property[]    @relation("PropertyCollaborators")
-  collaboratingRequirements Requirement[] @relation("RequirementCollaborators")
-  collaboratingDeals        Deal[]        @relation("DealCollaborators")
-  viewingsAsAgent      Viewing[]        @relation("ViewingAgent")
-  tasks                Task[]           @relation("TaskAssignee")
-  tasksCreated         Task[]           @relation("TaskCreator")
-  auditLogs            AuditLog[]
-  activities           Activity[]
-  aiIntakeJobs         AiIntakeJob[]
-  documentsUploaded    Document[]
-  marketingApproved    MarketingAsset[] @relation("MarketingApprover")
-  notes                Note[]
-  googleAccount        GoogleAccount?
+  collaboratingProperties   Property[]          @relation("PropertyCollaborators")
+  collaboratingRequirements Requirement[]       @relation("RequirementCollaborators")
+  collaboratingDeals        Deal[]              @relation("DealCollaborators")
+  viewingsAsAgent           Viewing[]           @relation("ViewingAgent")
+  tasks                     Task[]              @relation("TaskAssignee")
+  tasksCreated              Task[]              @relation("TaskCreator")
+  auditLogs                 AuditLog[]
+  activities                Activity[]
+  aiIntakeJobs              AiIntakeJob[]
+  documentsUploaded         Document[]
+  marketingApproved         MarketingAsset[]    @relation("MarketingApprover")
+  notes                     Note[]
+  googleAccount             GoogleAccount?
+  metaAccountsConnected     MetaAccount[]       @relation("MetaConnector")
+  metaPostsPublished        MetaPublishedPost[] @relation("MetaPublisher")
+  metaCampaignsCreated      MetaCampaign[]      @relation("MetaCampaignCreator")
 }
 
 // One connected Google account per user — Calendar (two-way: viewings/tasks
@@ -85,23 +88,23 @@ model User {
 // prompt=consent) — the connect flow forces that every time so reconnecting
 // after a revoke still gets one.
 model GoogleAccount {
-  id           String   @id @default(cuid())
-  userId       String   @unique
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  email        String
-  accessToken  String
-  refreshToken String
-  expiresAt    DateTime
-  scope        String
+  id               String   @id @default(cuid())
+  userId           String   @unique
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  email            String
+  accessToken      String
+  refreshToken     String
+  expiresAt        DateTime
+  scope            String
   // The one connected account (of possibly several — everyone can connect
   // their own for Calendar) designated as the company's shared Drive for
   // property media. Admin-only to change; at most one true at a time,
   // enforced in the designateStorageAccount action rather than the schema.
   // Uploads/imports/views use this account's Drive regardless of who's
   // logged into the CRM at the time.
-  isStorageAccount Boolean @default(false)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  isStorageAccount Boolean  @default(false)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 }
 
 // ---------------------------------------------------------------------------
@@ -231,10 +234,10 @@ enum LegalVerificationStatus {
 }
 
 model Property {
-  id          String  @id @default(cuid())
-  propertyRef String  @unique
-  title       String
-  description String?
+  id                 String  @id @default(cuid())
+  propertyRef        String  @unique
+  title              String
+  description        String?
   // Cached so media uploads don't re-search Drive for "does this property's
   // folder already exist" on every file — set the first time this property
   // gets a photo, in the company Drive's Property Media root folder.
@@ -243,8 +246,8 @@ model Property {
   category        PropertyCategory
   subtype         String
   transactionType TransactionType
-  listingStatus   ListingStatus @default(DRAFT)
-  exclusivity     Exclusivity   @default(OPEN)
+  listingStatus   ListingStatus    @default(DRAFT)
+  exclusivity     Exclusivity      @default(OPEN)
   source          String?
   sourceUrl       String? // original listing link when sourced from ikman.lk / LankaPropertyWeb / etc.
 
@@ -256,32 +259,32 @@ model Property {
 
   // Location
   province            String?
-  district             String?
-  city                 String?
-  suburb               String?
-  address              String?
-  landmark             String?
-  lat                  Float?
-  lng                  Float?
-  locationVisibility   LocationVisibility @default(APPROXIMATE)
-  roadAccess           String?
-  roadWidthFt          Float?
-  distanceMajorRoadKm  Float?
+  district            String?
+  city                String?
+  suburb              String?
+  address             String?
+  landmark            String?
+  lat                 Float?
+  lng                 Float?
+  locationVisibility  LocationVisibility @default(APPROXIMATE)
+  roadAccess          String?
+  roadWidthFt         Float?
+  distanceMajorRoadKm Float?
 
   // Measurements
   sizePerches        Float?
   sizeAcres          Float?
-  sizeRoods           Float?
+  sizeRoods          Float?
   sizeSqft           Float?
   sizeSqm            Float?
   builtUpSqft        Float?
   warehouseFloorSqft Float?
   frontageFt         Float?
   buildingHeightFt   Float?
-  clearHeightFt       Float?
-  floors              Int?
-  bedrooms            Int?
-  bathrooms           Int?
+  clearHeightFt      Float?
+  floors             Int?
+  bedrooms           Int?
+  bathrooms          Int?
 
   // Pricing. totalPrice/monthlyRental/annualLeaseValue is what the client
   // actually asked for. Some listings the client authorizes a markup on —
@@ -290,33 +293,33 @@ model Property {
   // and markup are confidential-gated on the detail page, same as
   // ownerMinPrice — the spread is commercially sensitive.
   totalPrice         Float?
-  priceNegotiable    Boolean @default(false)
+  priceNegotiable    Boolean    @default(false)
   pricePerPerch      Float?
   pricePerSqft       Float?
-  monthlyRental       Float?
-  annualLeaseValue    Float?
-  keyMoney            Float?
-  securityDeposit     Float?
-  minLeaseTermMonths  Int?
-  expectedYieldPct    Float?
-  currency            String  @default("LKR")
-  ownerMinPrice       Float?
-  markupType          MarkupType @default(NONE)
-  markupValue         Float?
-  advertisedPrice     Float?
+  monthlyRental      Float?
+  annualLeaseValue   Float?
+  keyMoney           Float?
+  securityDeposit    Float?
+  minLeaseTermMonths Int?
+  expectedYieldPct   Float?
+  currency           String     @default("LKR")
+  ownerMinPrice      Float?
+  markupType         MarkupType @default(NONE)
+  markupValue        Float?
+  advertisedPrice    Float?
 
   featuresJson Json?
 
   // Ownership & documents
   ownerId                 String?
-  owner                   Contact? @relation("PropertyOwner", fields: [ownerId], references: [id])
-  ownerAuthorityConfirmed Boolean  @default(false)
-  deedAvailable           Boolean  @default(false)
-  surveyPlanAvailable     Boolean  @default(false)
-  cocAvailable            Boolean  @default(false)
-  approvedPlanAvailable   Boolean  @default(false)
-  municipalDocsAvailable  Boolean  @default(false)
-  taxDocsAvailable        Boolean  @default(false)
+  owner                   Contact?                @relation("PropertyOwner", fields: [ownerId], references: [id])
+  ownerAuthorityConfirmed Boolean                 @default(false)
+  deedAvailable           Boolean                 @default(false)
+  surveyPlanAvailable     Boolean                 @default(false)
+  cocAvailable            Boolean                 @default(false)
+  approvedPlanAvailable   Boolean                 @default(false)
+  municipalDocsAvailable  Boolean                 @default(false)
+  taxDocsAvailable        Boolean                 @default(false)
   mortgageStatus          String?
   legalVerificationStatus LegalVerificationStatus @default(UNVERIFIED)
   internalLegalNotes      String?
@@ -336,6 +339,7 @@ model Property {
   activities      Activity[]
   matchShares     MatchShare[]
   notes           Note[]
+  metaCampaigns   MetaCampaign[]
 
   @@index([listingStatus])
   @@index([assignedAgentId])
@@ -356,24 +360,24 @@ enum MediaType {
 }
 
 model PropertyMedia {
-  id         String    @id @default(cuid())
-  propertyId String
-  property   Property  @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  id          String    @id @default(cuid())
+  propertyId  String
+  property    Property  @relation(fields: [propertyId], references: [id], onDelete: Cascade)
   // Servable URL — our own /api/drive-media/[fileId] proxy, not a direct
   // Drive link, so it works whether or not the file's public-permission
   // survives a manual edit in Drive itself. driveFileId is the real
   // identity; url is derived from it at upload time and kept for
   // convenience (every render site already just reads .url as an <img> src).
-  url        String
+  url         String
   driveFileId String?
-  type       MediaType
-  branded    Boolean   @default(false)
-  caption    String?
+  type        MediaType
+  branded     Boolean   @default(false)
+  caption     String?
   // The one photo shown on cards and list rows — at most one true per
   // property, enforced in the setCoverPhoto action (unset the rest, then
   // set this one) rather than in the schema.
-  isCover    Boolean   @default(false)
-  createdAt  DateTime  @default(now())
+  isCover     Boolean   @default(false)
+  createdAt   DateTime  @default(now())
 
   @@index([propertyId])
 }
@@ -478,10 +482,10 @@ model Requirement {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  collaborators User[]     @relation("RequirementCollaborators")
-  deals       Deal[]
-  activities  Activity[]
-  matchShares MatchShare[]
+  collaborators User[]       @relation("RequirementCollaborators")
+  deals         Deal[]
+  activities    Activity[]
+  matchShares   MatchShare[]
 
   @@index([status])
   @@index([clientId])
@@ -527,20 +531,20 @@ model Deal {
   stage                 DealStage @default(NEW_INQUIRY)
   expectedValue         Float?
   expectedCommissionPct Float?
-  probability            Int      @default(20)
-  nextAction              String?
-  nextActionDate          DateTime?
-  closingDate             DateTime?
-  lostReason              String?
+  probability           Int       @default(20)
+  nextAction            String?
+  nextActionDate        DateTime?
+  closingDate           DateTime?
+  lostReason            String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  collaborators User[]     @relation("DealCollaborators")
-  viewings   Viewing[]
-  offers     Offer[]
-  commission Commission?
-  activities Activity[]
+  collaborators User[]      @relation("DealCollaborators")
+  viewings      Viewing[]
+  offers        Offer[]
+  commission    Commission?
+  activities    Activity[]
 
   @@index([stage])
   @@index([propertyId])
@@ -692,6 +696,11 @@ enum MarketingContentType {
   BROCHURE
   SOCIAL_1_1
   STORY_9_16
+  // Organic Facebook Page post — distinct tone from META_AD (which is
+  // written to survive truncation and always carries a hard CTA) and from
+  // FB_MARKETPLACE (price/spec-first, no brand voice). Published directly
+  // to the connected Page via lib/meta.ts.
+  FB_PAGE_POST
 }
 
 enum Language {
@@ -701,16 +710,16 @@ enum Language {
 }
 
 model MarketingAsset {
-  id           String               @id @default(cuid())
-  propertyId   String
-  property     Property             @relation(fields: [propertyId], references: [id])
-  contentType  MarketingContentType
-  language     Language             @default(EN)
-  content      String
-  approved     Boolean              @default(false)
-  approvedById String?
-  approvedBy   User?                @relation("MarketingApprover", fields: [approvedById], references: [id])
-  createdAt    DateTime             @default(now())
+  id            String               @id @default(cuid())
+  propertyId    String
+  property      Property             @relation(fields: [propertyId], references: [id])
+  contentType   MarketingContentType
+  language      Language             @default(EN)
+  content       String
+  approved      Boolean              @default(false)
+  approvedById  String?
+  approvedBy    User?                @relation("MarketingApprover", fields: [approvedById], references: [id])
+  createdAt     DateTime             @default(now())
   // AI-composed social tile — only ever set for SOCIAL_1_1 / STORY_9_16
   // rows. Stored directly in Postgres (not Google Drive) so image
   // generation works standalone on this platform regardless of whether a
@@ -720,6 +729,9 @@ model MarketingAsset {
   imageData     Bytes?
   imageMimeType String?
   imageUrl      String?
+
+  publishedPosts MetaPublishedPost[]
+  metaCampaigns  MetaCampaign[]
 
   @@index([propertyId])
   @@index([approvedById])
@@ -747,6 +759,188 @@ model SharePage {
   createdAt           DateTime        @default(now())
 
   @@index([propertyId])
+}
+
+// ---------------------------------------------------------------------------
+// Meta (Facebook/Instagram) connection — one shared, company-wide connection
+// (not per-user, unlike GoogleAccount): Marketing Studio publishing/ads are
+// a shared team function, so whoever connects becomes "the connection",
+// closer to GoogleAccount.isStorageAccount's single admin-designated shared
+// resource than to Calendar's personal per-user account. Fully dormant
+// until META_APP_ID/SECRET/REDIRECT_URI are set — same two-tier shape as
+// Google OAuth and WhatsApp Cloud API elsewhere in this app.
+// ---------------------------------------------------------------------------
+
+model MetaAccount {
+  id                String   @id @default(cuid())
+  connectedByUserId String
+  connectedBy       User     @relation("MetaConnector", fields: [connectedByUserId], references: [id])
+  metaUserId        String // Facebook user id the token belongs to
+  metaUserName      String?
+  // Long-lived user access token (~60 days). Facebook has no refresh_token
+  // grant like Google — long-lived tokens are extended by re-exchanging the
+  // current one via fb_exchange_token before expiry, not a separate stored
+  // refresh credential.
+  accessToken       String
+  expiresAt         DateTime
+  scope             String // raw comma-joined scope string Meta granted
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  pages      MetaPage[]
+  adAccounts MetaAdAccount[]
+}
+
+// A Page the connected account manages. 1:many — a real agency's Facebook
+// user commonly manages several Pages — but only one is ever "active",
+// mirroring GoogleAccount.isStorageAccount's single-shared-designation
+// pattern rather than a picker shown on every publish action.
+model MetaPage {
+  id                  String      @id @default(cuid())
+  metaAccountId       String
+  metaAccount         MetaAccount @relation(fields: [metaAccountId], references: [id], onDelete: Cascade)
+  pageId              String      @unique // Facebook Page id
+  name                String
+  // Page Access Token — separate from, and outliving, the user token that
+  // fetched it (tokens derived from a long-lived user token are themselves
+  // long-lived/non-expiring in practice).
+  pageAccessToken     String
+  category            String?
+  igBusinessAccountId String? // Instagram Business Account id linked to this Page, if any
+  igUsername          String?
+  isActive            Boolean     @default(false) // the one Page the whole team publishes to
+  createdAt           DateTime    @default(now())
+  updatedAt           DateTime    @updatedAt
+
+  publishedPosts MetaPublishedPost[]
+
+  @@index([metaAccountId])
+}
+
+// An ad account the connected account can spend from. Kept separate from
+// MetaPage (a Page can exist with no ad account; one Business Portfolio
+// commonly funds ads promoting several Pages) — single "isActive"
+// designation for the same one-shared-choice reason as Pages.
+model MetaAdAccount {
+  id            String      @id @default(cuid())
+  metaAccountId String
+  metaAccount   MetaAccount @relation(fields: [metaAccountId], references: [id], onDelete: Cascade)
+  adAccountId   String      @unique // "act_<id>" form Meta returns
+  name          String
+  currency      String
+  accountStatus Int // Meta's numeric status (1 = active)
+  isActive      Boolean     @default(false)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  campaigns MetaCampaign[]
+
+  @@index([metaAccountId])
+}
+
+enum MetaPublishTarget {
+  FACEBOOK_PAGE
+  INSTAGRAM
+}
+
+enum MetaPublishStatus {
+  PUBLISHED
+  FAILED
+}
+
+// One row per publish attempt, not columns on MarketingAsset — a single
+// approved asset is routinely posted to Facebook AND Instagram, and
+// re-published after edits, so this is 1:many from the start. Also the
+// natural place to hang the "View on Facebook/Instagram" permalink once
+// Meta returns one.
+model MetaPublishedPost {
+  id               String            @id @default(cuid())
+  marketingAssetId String
+  marketingAsset   MarketingAsset    @relation(fields: [marketingAssetId], references: [id])
+  target           MetaPublishTarget
+  metaPageId       String?
+  metaPage         MetaPage?         @relation(fields: [metaPageId], references: [id])
+  externalPostId   String? // Page post id, or IG media id after publish
+  permalinkUrl     String? // resolved via GET /{post-id}?fields=permalink_url
+  status           MetaPublishStatus
+  errorMessage     String?
+  publishedById    String
+  publishedBy      User              @relation("MetaPublisher", fields: [publishedById], references: [id])
+  createdAt        DateTime          @default(now())
+
+  @@index([marketingAssetId])
+  @@index([metaPageId])
+}
+
+enum MetaAdObjective {
+  OUTCOME_TRAFFIC
+  OUTCOME_LEADS
+  OUTCOME_ENGAGEMENT
+}
+
+enum MetaCampaignStatus {
+  ACTIVE
+  PAUSED
+  DELETED
+  ARCHIVED
+  ERROR // synthetic status: created but never confirmed live
+}
+
+// One row per "Boost this listing" click. Deliberately flat — campaign, ad
+// set, ad, and creative ids all live on one row instead of four normalized
+// tables, since this flow only ever creates exactly one of each per boost
+// (no ad-set-level audience splitting, no multiple ads per campaign). A real
+// Ads Manager needs the full hierarchy; this focused flow doesn't.
+model MetaCampaign {
+  id               String          @id @default(cuid())
+  propertyId       String
+  property         Property        @relation(fields: [propertyId], references: [id])
+  marketingAssetId String? // the creative (image + copy) this ad used
+  marketingAsset   MarketingAsset? @relation(fields: [marketingAssetId], references: [id])
+  adAccountId      String
+  adAccount        MetaAdAccount   @relation(fields: [adAccountId], references: [id])
+
+  externalCampaignId String // Meta's campaign id
+  externalAdSetId    String
+  externalAdId       String
+  externalCreativeId String
+
+  objective         MetaAdObjective
+  dailyBudgetCents  Int // minor units, account currency
+  startDate         DateTime
+  endDate           DateTime?
+  targetingLocation String // human-readable summary (e.g. "Colombo, Sri Lanka") for display
+  targetingGeoJson  Json // raw Targeting Search API result actually sent to Meta
+
+  status      MetaCampaignStatus @default(ACTIVE)
+  createdById String
+  createdBy   User               @relation("MetaCampaignCreator", fields: [createdById], references: [id])
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+
+  insights MetaCampaignInsight[]
+
+  @@index([propertyId])
+  @@index([adAccountId])
+}
+
+// Point-in-time snapshot, not upserted in place — keeps real spend-over-time
+// history instead of only ever knowing the latest number, and makes "last
+// synced" trivially the most recent row's syncedAt.
+model MetaCampaignInsight {
+  id                 String       @id @default(cuid())
+  campaignId         String
+  campaign           MetaCampaign @relation(fields: [campaignId], references: [id])
+  impressions        Int
+  reach              Int
+  clicks             Int
+  spendCents         Int
+  ctr                Float
+  cpcCents           Int
+  costPerResultCents Int?
+  syncedAt           DateTime     @default(now())
+
+  @@index([campaignId, syncedAt])
 }
 
 // ---------------------------------------------------------------------------

@@ -1,22 +1,56 @@
 import { prisma } from "@/lib/prisma";
-import { requireRole } from "@/lib/auth";
-import { MARKETING_STUDIO_ROLES } from "@/lib/roles";
+import { requireRole, ADMIN_ROLES } from "@/lib/auth";
 import { groqConfigured } from "@/lib/groq";
 import { whatsappCloudConfigured } from "@/lib/whatsapp";
 import { emailConfigured } from "@/lib/email";
 import { FileText } from "lucide-react";
-import { PageHeader, Badge, EmptyState } from "@/components/ui";
+import { PageHeader, Badge, EmptyState, Tabs } from "@/components/ui";
 import { CONTENT_TYPE_LABELS } from "@/lib/marketing";
 import { MarketingStudioClient } from "./MarketingStudioClient";
 import { MarketingAssetActions } from "./MarketingAssetActions";
+import { DistributePanel } from "./DistributePanel";
+import { PublishPanel } from "./PublishPanel";
+import { AdsPanel } from "./AdsPanel";
+import { ConnectionsPanel } from "./ConnectionsPanel";
+import { getActiveMetaConnection } from "./publishActions";
 import { approveAsset } from "./actions";
 
+const TABS = [
+  { key: "create", label: "Create" },
+  { key: "distribute", label: "Distribute" },
+  { key: "publish", label: "Publish" },
+  { key: "ads", label: "Ads" },
+  { key: "connections", label: "Connections" },
+];
+
 export default async function MarketingStudioPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
-  await requireRole(MARKETING_STUDIO_ROLES);
+  await requireRole(ADMIN_ROLES);
   const sp = await searchParams;
-  const properties = await prisma.property.findMany({ orderBy: { title: "asc" }, select: { id: true, title: true, propertyRef: true } });
+  const tab = sp.tab ?? "create";
+
+  const properties = await prisma.property.findMany({ orderBy: { title: "asc" }, select: { id: true, title: true, propertyRef: true, city: true, district: true } });
   const orderedProperties = sp.propertyId ? [...properties].sort((a, b) => (a.id === sp.propertyId ? -1 : b.id === sp.propertyId ? 1 : 0)) : properties;
 
+  return (
+    <div>
+      <PageHeader
+        eyebrow="Marketing Studio"
+        title="Every channel, one place"
+        description="Generate channel-tuned copy and images, send to matched buyers/tenants, publish straight to Facebook and Instagram, and run Meta ad campaigns — all from one property record. Admin-only."
+      />
+
+      <Tabs tabs={TABS} active={tab} basePath="/marketing-studio" />
+
+      {tab === "create" && <CreateTab properties={orderedProperties} />}
+      {tab === "distribute" && <DistributePanel properties={orderedProperties} cloudConfigured={whatsappCloudConfigured()} emailConfigured={emailConfigured()} />}
+      {tab === "publish" && <PublishPanel properties={orderedProperties} connection={await getActiveMetaConnection()} />}
+      {tab === "ads" && <AdsPanel properties={orderedProperties} connection={await getActiveMetaConnection()} />}
+      {tab === "connections" && <ConnectionsPanel />}
+    </div>
+  );
+}
+
+async function CreateTab({ properties }: { properties: { id: string; title: string; propertyRef: string }[] }) {
   const recentAssets = await prisma.marketingAsset.findMany({
     include: { property: true, approvedBy: true },
     orderBy: { createdAt: "desc" },
@@ -24,14 +58,8 @@ export default async function MarketingStudioPage({ searchParams }: { searchPara
   });
 
   return (
-    <div>
-      <PageHeader
-        eyebrow="Marketing Studio"
-        title="Generate a full campaign"
-        description="One property record → channel-tuned copy for every format, AI-composed social image tiles from the real listing photo, and exactly who to send it to. Only approved facts are used."
-      />
-
-      <MarketingStudioClient properties={orderedProperties} groqEnabled={groqConfigured()} cloudConfigured={whatsappCloudConfigured()} emailConfigured={emailConfigured()} />
+    <>
+      <MarketingStudioClient properties={properties} groqEnabled={groqConfigured()} />
 
       <h2 className="mb-3 mt-8 text-sm font-semibold text-ir-navy">Recent generations</h2>
       {recentAssets.length === 0 ? (
@@ -72,6 +100,6 @@ export default async function MarketingStudioPage({ searchParams }: { searchPara
           ))}
         </div>
       )}
-    </div>
+    </>
   );
 }

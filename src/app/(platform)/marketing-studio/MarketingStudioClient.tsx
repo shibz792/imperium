@@ -6,12 +6,14 @@ import Link from "next/link";
 import { Sparkles, Layers, Copy, Check, Loader2, ImagePlus, Download, Rocket } from "lucide-react";
 import { generateAsset, generateAllAssets, generateSocialImage, propertiesNeedingCampaign } from "./actions";
 import { CONTENT_TYPE_LABELS, type ContentType } from "@/lib/marketing";
-import { MatchedAudiencePanel } from "./MatchedAudiencePanel";
 
 type PropertyOption = { id: string; title: string; propertyRef: string };
 const SOCIAL_TYPES: ContentType[] = ["SOCIAL_1_1", "STORY_9_16"];
 
-export function MarketingStudioClient({ properties, groqEnabled, cloudConfigured, emailConfigured }: { properties: PropertyOption[]; groqEnabled: boolean; cloudConfigured: boolean; emailConfigured: boolean }) {
+// Distribution (matched buyers/tenants, WhatsApp/email sends) lives in its
+// own Distribute tab now — see DistributePanel.tsx — so this component is
+// purely "generate and review content" again.
+export function MarketingStudioClient({ properties, groqEnabled }: { properties: PropertyOption[]; groqEnabled: boolean }) {
   const [propertyId, setPropertyId] = useState(properties[0]?.id ?? "");
   const [contentType, setContentType] = useState<ContentType>("WHATSAPP");
   const [language, setLanguage] = useState<"EN" | "SI" | "TA">("EN");
@@ -224,8 +226,6 @@ export function MarketingStudioClient({ properties, groqEnabled, cloudConfigured
         </div>
       )}
     </div>
-
-    {propertyId && <MatchedAudiencePanel key={propertyId} propertyId={propertyId} cloudConfigured={cloudConfigured} emailConfigured={emailConfigured} />}
     </>
   );
 }

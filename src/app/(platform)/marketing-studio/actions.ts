@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import { requireUser } from "@/lib/auth";
+import { requireRole, ADMIN_ROLES } from "@/lib/auth";
 import { logActivity } from "@/lib/audit";
 import { generateMarketingContent, CONTENT_TYPE_LABELS, type ContentType } from "@/lib/marketing";
 import { composeSocialImage, type SocialImageFormat } from "@/lib/marketingImage";
@@ -16,7 +16,7 @@ import { appBaseUrl } from "@/lib/url";
 import { sendEmail, parseEmailContent } from "@/lib/email";
 
 export async function generateAsset(propertyId: string, contentType: ContentType, language: "EN" | "SI" | "TA") {
-  const user = await requireUser();
+  const user = await requireRole(ADMIN_ROLES);
   const property = await prisma.property.findUniqueOrThrow({ where: { id: propertyId } });
   const { content } = await generateMarketingContent(property, contentType, language);
 
@@ -39,7 +39,7 @@ export async function generateAsset(propertyId: string, contentType: ContentType
 // error here) if the property has no usable photo yet; each row still has
 // its own manual "Generate image" retry in Recent generations.
 export async function generateAllAssets(propertyId: string, language: "EN" | "SI" | "TA") {
-  await requireUser();
+  await requireRole(ADMIN_ROLES);
   const contentTypes = Object.keys(CONTENT_TYPE_LABELS) as ContentType[];
   const assets = await Promise.all(contentTypes.map((contentType) => generateAsset(propertyId, contentType, language)));
 
@@ -58,7 +58,7 @@ export async function generateAllAssets(propertyId: string, language: "EN" | "SI
 // per-property progress, rather than one opaque server call that only
 // resolves at the very end.
 export async function propertiesNeedingCampaign(): Promise<{ id: string; title: string }[]> {
-  await requireUser();
+  await requireRole(ADMIN_ROLES);
   const properties = await prisma.property.findMany({
     where: { listingStatus: "ACTIVE" },
     select: { id: true, title: true, marketingAssets: { where: { approved: true }, take: 1 } },
@@ -68,7 +68,7 @@ export async function propertiesNeedingCampaign(): Promise<{ id: string; title: 
 }
 
 export async function approveAsset(id: string) {
-  const user = await requireUser();
+  const user = await requireRole(ADMIN_ROLES);
   const asset = await prisma.marketingAsset.update({ where: { id }, data: { approved: true, approvedById: user.id } });
   await logActivity({ entityType: "property", propertyId: asset.propertyId, type: "MARKETING_APPROVED", message: `${user.name} approved marketing content for use.`, userId: user.id });
   revalidatePath("/marketing-studio");
@@ -81,7 +81,7 @@ export async function approveAsset(id: string) {
 // Resets approval: a re-generated approved asset needs a fresh look before
 // it goes back to being what gets copied everywhere.
 export async function regenerateAsset(id: string) {
-  const user = await requireUser();
+  const user = await requireRole(ADMIN_ROLES);
   const existing = await prisma.marketingAsset.findUniqueOrThrow({ where: { id }, include: { property: true } });
   const { content } = await generateMarketingContent(existing.property, existing.contentType as ContentType, existing.language);
 
@@ -100,7 +100,7 @@ export async function regenerateAsset(id: string) {
 // WhatsApp buttons are copying; deleting it out from under that needs an
 // explicit un-approve first, not a stray click here.
 export async function deleteMarketingAsset(id: string) {
-  await requireUser();
+  await requireRole(ADMIN_ROLES);
   const asset = await prisma.marketingAsset.findUnique({ where: { id } });
   if (!asset || asset.approved) return;
   await prisma.marketingAsset.delete({ where: { id } });
@@ -147,7 +147,7 @@ async function fetchSourcePhoto(url: string): Promise<Buffer | null> {
 // functionality and shouldn't depend on an external account being
 // connected. See src/lib/marketingImage.ts for what actually gets drawn.
 export async function generateSocialImage(assetId: string): Promise<{ ok: true; imageUrl: string } | { ok: false; error: string }> {
-  const user = await requireUser();
+  const user = await requireRole(ADMIN_ROLES);
   const asset = await prisma.marketingAsset.findUniqueOrThrow({ where: { id: assetId }, include: { property: true } });
   if (asset.contentType !== "SOCIAL_1_1" && asset.contentType !== "STORY_9_16") {
     return { ok: false, error: "Image generation is only available for the 1:1 and 9:16 social formats." };
@@ -195,7 +195,7 @@ export async function generateSocialImage(assetId: string): Promise<{ ok: true; 
 // properties/actions.ts createSharePage), its link becomes the brochure's
 // QR code; otherwise the brochure is generated without one.
 export async function generateBrochurePdf(assetId: string): Promise<{ ok: true; imageUrl: string } | { ok: false; error: string }> {
-  const user = await requireUser();
+  const user = await requireRole(ADMIN_ROLES);
   const asset = await prisma.marketingAsset.findUniqueOrThrow({ where: { id: assetId }, include: { property: true } });
   if (asset.contentType !== "BROCHURE") {
     return { ok: false, error: "PDF generation is only available for the brochure content type." };
@@ -227,7 +227,7 @@ export async function generateBrochurePdf(assetId: string): Promise<{ ok: true; 
 // buttons already use, see whatsAppMessage() in lib/property.ts), else the
 // most recent draft, else nothing to send yet.
 export async function whatsAppContentForProperty(propertyId: string): Promise<string | null> {
-  await requireUser();
+  await requireRole(ADMIN_ROLES);
   const asset = await prisma.marketingAsset.findFirst({
     where: { propertyId, contentType: "WHATSAPP" },
     orderBy: [{ approved: "desc" }, { createdAt: "desc" }],
@@ -249,7 +249,7 @@ export type MatchedContact = {
 // Marketing Studio, so approving content and sending it don't require
 // hopping to a different screen.
 export async function matchedAudience(propertyId: string): Promise<MatchedContact[]> {
-  await requireUser();
+  await requireRole(ADMIN_ROLES);
   const [property, requirements] = await Promise.all([
     prisma.property.findUniqueOrThrow({ where: { id: propertyId } }),
     prisma.requirement.findMany({
@@ -273,7 +273,7 @@ export async function matchedAudience(propertyId: string): Promise<MatchedContac
 // <body>" (see CHANNEL_SPECS, lib/marketing.ts) — parseEmailContent just
 // splits that, it doesn't regenerate anything.
 export async function emailContentForProperty(propertyId: string): Promise<{ subject: string; body: string } | null> {
-  await requireUser();
+  await requireRole(ADMIN_ROLES);
   const asset = await prisma.marketingAsset.findFirst({
     where: { propertyId, contentType: "EMAIL_CAMPAIGN" },
     orderBy: [{ approved: "desc" }, { createdAt: "desc" }],
@@ -282,7 +282,7 @@ export async function emailContentForProperty(propertyId: string): Promise<{ sub
 }
 
 export async function sendMatchedContactEmail(email: string, subject: string, body: string) {
-  await requireUser();
+  await requireRole(ADMIN_ROLES);
   return sendEmail(email, subject, body);
 }
 
@@ -291,6 +291,6 @@ export async function sendMatchedContactEmail(email: string, subject: string, bo
 // two-tier pattern as everywhere else this app talks to WhatsApp); the
 // click-to-chat link above always works regardless.
 export async function sendMatchedContact(phone: string, content: string) {
-  await requireUser();
+  await requireRole(ADMIN_ROLES);
   return sendWhatsAppMessage(phone, content);
 }

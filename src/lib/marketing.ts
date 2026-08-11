@@ -5,7 +5,7 @@ import { primarySize, relevantAskingPrice, priceUnit } from "@/lib/property";
 
 export type ContentType =
   | "DESCRIPTION" | "WHATSAPP" | "META_AD" | "FB_MARKETPLACE" | "INSTAGRAM_CAPTION"
-  | "WEBSITE_COPY" | "EMAIL_CAMPAIGN" | "BROCHURE" | "SOCIAL_1_1" | "STORY_9_16";
+  | "WEBSITE_COPY" | "EMAIL_CAMPAIGN" | "BROCHURE" | "SOCIAL_1_1" | "STORY_9_16" | "FB_PAGE_POST";
 
 export const CONTENT_TYPE_LABELS: Record<ContentType, string> = {
   DESCRIPTION: "Premium property description",
@@ -18,6 +18,7 @@ export const CONTENT_TYPE_LABELS: Record<ContentType, string> = {
   BROCHURE: "Branded PDF brochure text",
   SOCIAL_1_1: "1:1 social post copy",
   STORY_9_16: "9:16 story copy",
+  FB_PAGE_POST: "Facebook Page post",
 };
 
 function factSheet(p: Property) {
@@ -65,6 +66,8 @@ const CHANNEL_SPECS: Record<ContentType, string> = {
     'Not a caption — this is on-image text for a square (1:1) social media tile, read at a glance in under two seconds. Return ONLY two short lines: a headline under 40 characters, then a tagline under 70 characters. No hashtags, no emoji, no price and no call to action (the price and agency mark are added to the image separately).',
   STORY_9_16:
     'On-image text for a vertical (9:16) story tile — shorter than the square format, read while mid-scroll. Return ONLY two short lines: a headline under 32 characters, then a short line under 50 characters. No hashtags, no emoji, no price.',
+  FB_PAGE_POST:
+    "Organic Facebook Page post — this is a Page update from the agency, not an ad. Warm, conversational voice. 2-4 short sentences. At most 1 emoji, no hashtags. One soft call to action (e.g. \"message us\" or \"ask us about this one\"), never a hard ad-style CTA.",
 };
 
 async function generateWithGroq(p: Property, contentType: ContentType, language: string): Promise<string | null> {
@@ -105,6 +108,8 @@ function generateHeuristic(p: Property, contentType: ContentType): string {
       return `${p.title}\n${location}`;
     case "STORY_9_16":
       return `${p.title}\nEnquire today`;
+    case "FB_PAGE_POST":
+      return `Just listed: ${p.title} in ${location}. ${priceLine}${size ? ` · ${size}` : ""}. Message us if you'd like to know more or arrange a viewing.`;
     case "DESCRIPTION":
     default:
       return `${p.description ? p.description + "\n\n" : ""}Located in ${location}, this ${p.subtype.toLowerCase()} offers ${size ? `${size} of space ` : ""}${featureList.length ? `with ${featureList.slice(0, 4).join(", ")}. ` : ""}${priceLine}. Presented exclusively through Imperium Realty.`;

@@ -1,5 +1,5 @@
 import type { Role } from "@/generated/prisma/client";
-import { SALES_TEAM_ROLES, AI_INTAKE_ROLES, SOURCING_ROLES, MARKETING_STUDIO_ROLES, DOCUMENT_ROLES, DEAL_ROLES, VIEWING_MATCH_ROLES, ALL_INTERNAL_ROLES, FINANCE_ROLES, ANALYTICS_ROLES } from "@/lib/roles";
+import { SALES_TEAM_ROLES, AI_INTAKE_ROLES, SOURCING_ROLES, DOCUMENT_ROLES, DEAL_ROLES, VIEWING_MATCH_ROLES, ALL_INTERNAL_ROLES, FINANCE_ROLES, ANALYTICS_ROLES, ADMIN_ROLES } from "@/lib/roles";
 
 export type NavSection = "Workspace" | "Tools" | "Records" | "Business";
 
@@ -35,7 +35,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/ai-intake", label: "AI Intake", icon: "Sparkles", section: "Tools", roles: AI_INTAKE_ROLES },
   { href: "/sourcing", label: "External Sourcing", icon: "Search", section: "Tools", roles: SOURCING_ROLES },
   { href: "/matchmaker", label: "Matchmaker", icon: "Radar", section: "Tools", roles: VIEWING_MATCH_ROLES },
-  { href: "/marketing-studio", label: "Marketing Studio", icon: "Megaphone", section: "Tools", roles: MARKETING_STUDIO_ROLES },
+  { href: "/marketing-studio", label: "Marketing Studio", icon: "Megaphone", section: "Tools", roles: ADMIN_ROLES },
 
   { href: "/contacts", label: "Contacts & CRM", icon: "Users", section: "Records", roles: SALES_TEAM_ROLES },
   { href: "/agents", label: "Agents", icon: "UserRound", section: "Records", roles: SALES_TEAM_ROLES },
@@ -43,7 +43,7 @@ export const NAV_ITEMS: NavItem[] = [
 
   { href: "/commissions", label: "Commission Centre", icon: "Wallet", section: "Business", roles: FINANCE_ROLES },
   { href: "/analytics", label: "Analytics", icon: "BarChart3", section: "Business", roles: ANALYTICS_ROLES },
-  { href: "/admin", label: "Administration", icon: "ShieldCheck", section: "Business", roles: ["SUPER_ADMIN"] },
+  { href: "/admin", label: "Administration", icon: "ShieldCheck", section: "Business", roles: ADMIN_ROLES },
   { href: "/settings", label: "Settings", icon: "Settings", section: "Business" },
 ];
 

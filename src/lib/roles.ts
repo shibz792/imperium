@@ -25,7 +25,6 @@ export const ROLE_LABELS: Record<Role, string> = {
 export const SALES_TEAM_ROLES: Role[] = ["SUPER_ADMIN", "DIRECTOR", "SALES_MANAGER", "AGENT"];
 export const AI_INTAKE_ROLES: Role[] = ["SUPER_ADMIN", "DIRECTOR", "SALES_MANAGER", "AGENT", "MARKETING"];
 export const SOURCING_ROLES: Role[] = ["SUPER_ADMIN", "DIRECTOR", "SALES_MANAGER", "AGENT"];
-export const MARKETING_STUDIO_ROLES: Role[] = ["SUPER_ADMIN", "DIRECTOR", "SALES_MANAGER", "AGENT", "MARKETING"];
 export const DOCUMENT_ROLES: Role[] = ["SUPER_ADMIN", "DIRECTOR", "SALES_MANAGER", "AGENT", "LEGAL", "FINANCE"];
 export const DEAL_ROLES: Role[] = ["SUPER_ADMIN", "DIRECTOR", "SALES_MANAGER", "AGENT", "FINANCE", "EXTERNAL_BROKER"];
 export const VIEWING_MATCH_ROLES: Role[] = ["SUPER_ADMIN", "DIRECTOR", "SALES_MANAGER", "AGENT", "EXTERNAL_BROKER"];
@@ -34,6 +33,14 @@ export const VIEWING_MATCH_ROLES: Role[] = ["SUPER_ADMIN", "DIRECTOR", "SALES_MA
 // both the server-side check and the nav/page role gates read one array.
 export const FINANCE_ROLES: Role[] = ["SUPER_ADMIN", "DIRECTOR", "FINANCE", "SALES_MANAGER"];
 export const ANALYTICS_ROLES: Role[] = ["SUPER_ADMIN", "DIRECTOR", "SALES_MANAGER", "FINANCE", "MARKETING"];
+// Roles that can administer users, roles, locations, templates, audit logs
+// — also Marketing Studio's own access, per the standing decision that the
+// whole feature (content, publishing, ads, connecting Meta/WhatsApp) is
+// admin-only, not shared with the wider marketing team. Also re-exported
+// from lib/auth.ts (isAdmin()'s source of truth) for the same reason
+// FINANCE_ROLES is: one array read by both the server-only check and the
+// client-safe nav gate.
+export const ADMIN_ROLES: Role[] = ["SUPER_ADMIN"];
 // Every non-portal, non-client role — for the handful of pages (Properties,
 // Command Centre, Settings) that are meant to be reachable by anyone on
 // staff rather than scoped to one function.

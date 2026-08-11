@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { cache } from "react";
 import { prisma } from "@/lib/prisma";
 import { SESSION_COOKIE, verifySessionToken } from "@/lib/session";
-import { FINANCE_ROLES } from "@/lib/roles";
+import { FINANCE_ROLES, ADMIN_ROLES } from "@/lib/roles";
 import type { Role, User } from "@/generated/prisma/client";
 
 export type CurrentUser = Pick<User, "id" | "name" | "email" | "role" | "phone" | "active" | "lastNotificationsSeenAt">;
@@ -12,11 +12,8 @@ export type CurrentUser = Pick<User, "id" | "name" | "email" | "role" | "phone" 
 // notes, confidential contact/requirement notes) per spec §10 & §13.
 export const CONFIDENTIAL_ROLES: Role[] = ["SUPER_ADMIN", "DIRECTOR", "SALES_MANAGER", "FINANCE", "LEGAL"];
 
-// Roles that can administer users, roles, locations, templates, audit logs.
-export const ADMIN_ROLES: Role[] = ["SUPER_ADMIN"];
-
 export { ROLE_LABELS } from "@/lib/roles";
-export { FINANCE_ROLES };
+export { FINANCE_ROLES, ADMIN_ROLES };
 
 // cache() de-dupes within a single request render pass.
 export const getCurrentUser = cache(async (): Promise<CurrentUser | null> => {
