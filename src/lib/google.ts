@@ -169,11 +169,6 @@ async function getValidAccessToken(userId: string): Promise<string | null> {
   return refreshed.accessToken;
 }
 
-export async function isGoogleConnected(userId: string): Promise<boolean> {
-  const account = await prisma.googleAccount.findUnique({ where: { userId }, select: { id: true } });
-  return Boolean(account);
-}
-
 // ---------------------------------------------------------------------------
 // Calendar — push viewings/tasks out as events, check freebusy before
 // double-booking an agent. "primary" calendar only; no calendar picker —

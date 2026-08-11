@@ -1,5 +1,5 @@
 import type { Property, Requirement } from "@/generated/prisma/client";
-import { ALL_DISTRICTS, locationsMatch } from "@/lib/locations";
+import { locationsMatch } from "@/lib/locations";
 
 // Imperium matching engine — spec §6.
 // Hard filters exclude a pairing outright; the weighted score only runs on
@@ -227,8 +227,4 @@ export function explainMatch(result: MatchResult): string {
   if (gap) sentence += `. ${gap.charAt(0).toUpperCase() + gap.slice(1)}.`;
   else sentence += ".";
   return sentence;
-}
-
-export function isKnownDistrict(name: string) {
-  return ALL_DISTRICTS.some((d) => d.toLowerCase() === name.toLowerCase());
 }

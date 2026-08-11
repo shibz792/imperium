@@ -9,7 +9,7 @@ import { writeAudit, logActivity } from "@/lib/audit";
 import { deleteGuarded } from "@/lib/deleteGuard";
 import { scoreMatch } from "@/lib/match";
 import { buildClientDigest, buildBrokerBroadcast } from "@/lib/requirementMarketing";
-import { waLink, whatsappCloudConfigured, sendWhatsAppMessage } from "@/lib/whatsapp";
+import { sendWhatsAppMessage } from "@/lib/whatsapp";
 import { sendEmail } from "@/lib/email";
 
 function str(fd: FormData, key: string): string | undefined {
@@ -202,11 +202,6 @@ export async function brokerBroadcastPreview(requirementId: string): Promise<{ m
   ]);
   const message = await buildBrokerBroadcast(requirement);
   return { message, brokers: brokers.filter((b) => b.phone) };
-}
-
-export async function requirementWaLink(phone: string, content: string): Promise<{ link: string; cloudConfigured: boolean }> {
-  await requireUser();
-  return { link: waLink(phone, content), cloudConfigured: whatsappCloudConfigured() };
 }
 
 export async function sendRequirementWhatsApp(phone: string, content: string) {

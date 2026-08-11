@@ -10,7 +10,7 @@ import { streamPropertyPhoto } from "@/lib/google";
 import { relevantAskingPrice, priceUnit } from "@/lib/property";
 import { formatCurrency } from "@/lib/format";
 import { scoreMatch } from "@/lib/match";
-import { waLink, whatsappCloudConfigured, sendWhatsAppMessage } from "@/lib/whatsapp";
+import { sendWhatsAppMessage } from "@/lib/whatsapp";
 import { composeBrochure } from "@/lib/brochurePdf";
 import { appBaseUrl } from "@/lib/url";
 import { sendEmail, parseEmailContent } from "@/lib/email";
@@ -284,16 +284,6 @@ export async function emailContentForProperty(propertyId: string): Promise<{ sub
 export async function sendMatchedContactEmail(email: string, subject: string, body: string) {
   await requireUser();
   return sendEmail(email, subject, body);
-}
-
-// wa.me link prefilled with the given content for one specific contact —
-// same helper CopyWhatsAppButton already uses elsewhere, just aimed at a
-// matched contact instead of a generic copy button. Cloud API auto-send
-// stays dormant (same two-tier pattern as the rest of this app) until real
-// Meta credentials are configured.
-export async function whatsAppSendLink(phone: string, content: string): Promise<{ link: string; cloudConfigured: boolean }> {
-  await requireUser();
-  return { link: waLink(phone, content), cloudConfigured: whatsappCloudConfigured() };
 }
 
 // Real one-click send via the WhatsApp Business Cloud API — dormant until

@@ -110,10 +110,6 @@ export function districtForCity(city: string): string | undefined {
   return undefined;
 }
 
-export function provinceForDistrict(district: string): string | undefined {
-  return SRI_LANKA_GEOGRAPHY.find((d) => d.district.toLowerCase() === district.toLowerCase())?.province;
-}
-
 export const PROPERTY_SUBTYPES: Record<string, string[]> = {
   RESIDENTIAL: ["House", "Apartment", "Villa", "Luxury Residence", "Annexe", "Room", "Gated Community Home", "Holiday Home", "Development Project"],
   COMMERCIAL: ["Office", "Retail Space", "Commercial Building", "Showroom", "Restaurant", "Hotel", "Guesthouse", "Mixed-Use Development"],

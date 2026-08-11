@@ -9,11 +9,6 @@ export function formatCurrency(amount: number | null | undefined, currency = "LK
   return `${currency} ${amount.toLocaleString()}`;
 }
 
-export function formatCompactNumber(n: number | null | undefined) {
-  if (n == null) return "-";
-  return new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 }).format(n);
-}
-
 export function formatDate(d: Date | string | null | undefined) {
   if (!d) return "-";
   const date = typeof d === "string" ? new Date(d) : d;
@@ -38,12 +33,6 @@ export function daysAgo(d: Date | string | null | undefined): number | null {
   return Math.floor((Date.now() - date.getTime()) / 86_400_000);
 }
 
-export function daysUntil(d: Date | string | null | undefined): number | null {
-  if (!d) return null;
-  const date = typeof d === "string" ? new Date(d) : d;
-  return Math.ceil((date.getTime() - Date.now()) / 86_400_000);
-}
-
 // Handles both SCREAMING_SNAKE_CASE (enum values) and camelCase (feature
 // keys like "swimmingPool") — splitting only on "_" left camelCase words
 // concatenated (e.g. "Swimmingpool"), caught via a real screenshot review.
@@ -56,13 +45,6 @@ export function titleCase(s: string) {
     .filter(Boolean)
     .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
     .join(" ");
-}
-
-export function slugify(s: string) {
-  return s
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/(^-|-$)/g, "");
 }
 
 export function initials(name: string) {
