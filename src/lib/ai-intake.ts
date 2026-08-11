@@ -93,11 +93,30 @@ async function extractWithGroq(rawText: string, mode: IntakeMode): Promise<Draft
     sourceExcerpt: String(d.sourceExcerpt ?? rawText.slice(0, 200)),
     confidence: clampConfidence(d.confidence),
     fieldConfidence: (d.fieldConfidence as Record<string, number>) ?? {},
-    fields: (d.fields as PropertyDraftFields | RequirementDraftFields) ?? {},
+    fields: stripImpossibleZeros((d.fields as PropertyDraftFields | RequirementDraftFields) ?? {}),
     missingFields: Array.isArray(d.missingFields) ? (d.missingFields as string[]) : [],
     suggestedFollowUp: typeof d.suggestedFollowUp === "string" ? d.suggestedFollowUp : undefined,
     duplicates: [],
   }));
+}
+
+// Size and money fields can never legitimately be 0 in real estate (unlike
+// bedrooms/bathrooms/floors, where 0 is a real value — a studio, a ground-
+// floor unit). Despite the prompt instructing the model to omit fields it's
+// not confident about, live testing showed Groq sometimes returns 0 for
+// these anyway. Treat that as "not actually stated" rather than a real
+// zero, so the review UI shows a blank instead of a misleading "0".
+const NEVER_ZERO_FIELDS = [
+  "sizeSqft", "sizePerches", "sizeAcres", "totalPrice", "monthlyRental", "annualLeaseValue",
+  "sizeMin", "sizeMax", "budgetMin", "budgetMax",
+] as const;
+
+function stripImpossibleZeros<T extends Record<string, unknown>>(fields: T): T {
+  const cleaned = { ...fields };
+  for (const key of NEVER_ZERO_FIELDS) {
+    if (cleaned[key] === 0) delete cleaned[key];
+  }
+  return cleaned;
 }
 
 function clampConfidence(v: unknown): number {

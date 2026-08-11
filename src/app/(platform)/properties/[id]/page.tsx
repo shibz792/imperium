@@ -2,7 +2,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Pencil, ShieldCheck, ExternalLink, Trash2, Star, CheckCircle2, Circle } from "lucide-react";
 import { prisma } from "@/lib/prisma";
-import { requireUser, canSeeConfidential, isAdmin } from "@/lib/auth";
+import { requireRole, canSeeConfidential, isAdmin } from "@/lib/auth";
+import { ALL_INTERNAL_ROLES } from "@/lib/roles";
 import { Badge, Field, PageHeader, SectionCard, Tabs, EmptyState } from "@/components/ui";
 import { WhatsAppButton } from "@/components/WhatsAppButton";
 import { CopyableMessage } from "@/components/CopyableMessage";
@@ -42,7 +43,7 @@ export default async function PropertyDetailPage({ params, searchParams }: { par
   const { id } = await params;
   const sp = await searchParams;
   const { tab = "overview" } = sp;
-  const user = await requireUser();
+  const user = await requireRole(ALL_INTERNAL_ROLES);
   const showConfidential = canSeeConfidential(user);
 
   const property = await prisma.property.findUnique({

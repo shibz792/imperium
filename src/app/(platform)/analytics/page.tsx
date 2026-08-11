@@ -1,4 +1,5 @@
 import { requireRole } from "@/lib/auth";
+import { ANALYTICS_ROLES } from "@/lib/roles";
 import { PageHeader, StatTile, SectionCard, Badge, EmptyState } from "@/components/ui";
 import { getAnalyticsData } from "@/lib/queries/analytics";
 import { formatCurrency, titleCase } from "@/lib/format";
@@ -7,7 +8,7 @@ import { FunnelChart, AgentPerformanceChart } from "@/components/charts/Analytic
 const CATEGORY_LABELS = ["Residential", "Commercial", "Industrial", "Land"];
 
 export default async function AnalyticsPage() {
-  await requireRole(["SUPER_ADMIN", "DIRECTOR", "SALES_MANAGER", "FINANCE", "MARKETING"]);
+  await requireRole(ANALYTICS_ROLES);
   const data = await getAnalyticsData();
 
   return (

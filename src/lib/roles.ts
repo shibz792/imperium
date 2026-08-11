@@ -29,6 +29,11 @@ export const MARKETING_STUDIO_ROLES: Role[] = ["SUPER_ADMIN", "DIRECTOR", "SALES
 export const DOCUMENT_ROLES: Role[] = ["SUPER_ADMIN", "DIRECTOR", "SALES_MANAGER", "AGENT", "LEGAL", "FINANCE"];
 export const DEAL_ROLES: Role[] = ["SUPER_ADMIN", "DIRECTOR", "SALES_MANAGER", "AGENT", "FINANCE", "EXTERNAL_BROKER"];
 export const VIEWING_MATCH_ROLES: Role[] = ["SUPER_ADMIN", "DIRECTOR", "SALES_MANAGER", "AGENT", "EXTERNAL_BROKER"];
+// Roles with full financial visibility (commission centre, pipeline value).
+// Also re-exported from lib/auth.ts (canSeeFinance()'s source of truth) so
+// both the server-side check and the nav/page role gates read one array.
+export const FINANCE_ROLES: Role[] = ["SUPER_ADMIN", "DIRECTOR", "FINANCE", "SALES_MANAGER"];
+export const ANALYTICS_ROLES: Role[] = ["SUPER_ADMIN", "DIRECTOR", "SALES_MANAGER", "FINANCE", "MARKETING"];
 // Every non-portal, non-client role — for the handful of pages (Properties,
 // Command Centre, Settings) that are meant to be reachable by anyone on
 // staff rather than scoped to one function.
