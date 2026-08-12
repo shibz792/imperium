@@ -1,11 +1,16 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { UploadCloud, Loader2, TriangleAlert } from "lucide-react";
-import { uploadPropertyPhotos } from "./actions";
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { UploadCloud, Loader2, TriangleAlert, Check, RotateCcw, X } from "lucide-react";
+import { uploadPropertyPhoto } from "./actions";
 
 const MAX_DIMENSION = 1920;
 const JPEG_QUALITY = 0.82;
+// A small pool, not strictly sequential — cuts real wall-clock time for a
+// typical 10-20 photo batch significantly, while staying well short of
+// anything that would look like a burst/abuse pattern to Drive's API.
+const CONCURRENCY = 3;
 
 // Real phone-camera photos routinely run 3-12MB — well past Vercel's hard
 // 4.5MB Serverless Function request body ceiling, a platform limit next.config
@@ -35,34 +40,79 @@ async function compressImage(file: File): Promise<File> {
   }
 }
 
+async function runWithConcurrency<T>(items: T[], limit: number, worker: (item: T) => Promise<void>) {
+  let cursor = 0;
+  async function next(): Promise<void> {
+    const index = cursor++;
+    if (index >= items.length) return;
+    await worker(items[index]);
+    return next();
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, () => next()));
+}
+
+type FileState = {
+  id: string;
+  file: File;
+  name: string;
+  previewUrl: string;
+  status: "queued" | "compressing" | "uploading" | "done" | "error";
+  error?: string;
+  asCover: boolean;
+};
+
 // A <label> wrapping a visually-hidden file input, not a div+onClick+ref —
 // that keeps drag-and-drop AND plain click-to-choose AND keyboard (Tab,
 // Enter/Space on the focused input) all working without extra JS wiring.
-export function PropertyPhotoUploader({ propertyId }: { propertyId: string }) {
-  const [pending, startTransition] = useTransition();
+export function PropertyPhotoUploader({ propertyId, hasExistingPhotos }: { propertyId: string; hasExistingPhotos: boolean }) {
+  const router = useRouter();
   const [dragOver, setDragOver] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
+  const [queue, setQueue] = useState<FileState[]>([]);
 
   function upload(fileList: FileList) {
-    const files = Array.from(fileList);
+    const files = Array.from(fileList).filter((f) => f.size > 0);
     if (files.length === 0) return;
-    setError(null);
-    startTransition(async () => {
-      setProgress({ done: 0, total: files.length });
-      const errors: string[] = [];
-      for (const file of files) {
-        const compressed = await compressImage(file);
-        const fd = new FormData();
-        fd.append("files", compressed);
-        const result = await uploadPropertyPhotos(propertyId, fd);
-        if (!result.ok) errors.push(`${file.name}: ${result.error ?? "upload failed"}`);
-        setProgress((p) => (p ? { done: p.done + 1, total: p.total } : p));
-      }
-      setProgress(null);
-      if (errors.length) setError(errors.join(" · "));
-    });
+    // Only the very first file of the very first batch this component ever
+    // sends, when the gallery was genuinely empty beforehand, claims cover
+    // — decided once, client-side, so no two parallel uploads can ever
+    // both think they're "the first photo" (see uploadPropertyPhoto's own
+    // comment on why this can't safely be decided server-side per-file).
+    const claimCover = !hasExistingPhotos && queue.length === 0;
+    const items: FileState[] = files.map((file, i) => ({
+      id: `${Date.now()}-${i}-${file.name}`,
+      file,
+      name: file.name,
+      previewUrl: URL.createObjectURL(file),
+      status: "queued",
+      asCover: claimCover && i === 0,
+    }));
+    setQueue((q) => [...q, ...items]);
+    runBatch(items);
   }
+
+  function runBatch(items: FileState[]) {
+    runWithConcurrency(items, CONCURRENCY, async (item) => {
+      setQueue((q) => q.map((x) => (x.id === item.id ? { ...x, status: "compressing" } : x)));
+      const compressed = await compressImage(item.file);
+      setQueue((q) => q.map((x) => (x.id === item.id ? { ...x, status: "uploading" } : x)));
+      const fd = new FormData();
+      fd.append("file", compressed);
+      if (item.asCover) fd.append("asCover", "true");
+      const result = await uploadPropertyPhoto(propertyId, fd);
+      setQueue((q) => q.map((x) => (x.id === item.id ? (result.ok ? { ...x, status: "done" } : { ...x, status: "error", error: result.error }) : x)));
+    }).then(() => router.refresh());
+  }
+
+  function retry(item: FileState) {
+    setQueue((q) => q.map((x) => (x.id === item.id ? { ...x, status: "queued", error: undefined } : x)));
+    runBatch([item]);
+  }
+
+  function dismiss(id: string) {
+    setQueue((q) => q.filter((x) => x.id !== id));
+  }
+
+  const busy = queue.some((x) => x.status === "queued" || x.status === "compressing" || x.status === "uploading");
 
   return (
     <div className="mb-4">
@@ -86,21 +136,45 @@ export function PropertyPhotoUploader({ propertyId }: { propertyId: string }) {
           accept="image/*"
           multiple
           className="sr-only"
-          disabled={pending}
           onChange={(e) => {
             if (e.target.files) upload(e.target.files);
             e.target.value = "";
           }}
         />
-        {pending ? <Loader2 size={20} className="animate-spin text-ir-gold-dark" /> : <UploadCloud size={20} className="text-black/30" />}
-        <div className="text-sm font-medium text-ir-navy">
-          {progress ? `Uploading ${progress.done}/${progress.total}…` : "Drop photos here, or click to choose"}
-        </div>
+        {busy ? <Loader2 size={20} className="animate-spin text-ir-gold-dark" /> : <UploadCloud size={20} className="text-black/30" />}
+        <div className="text-sm font-medium text-ir-navy">Drop photos here, or click to choose</div>
         <div className="text-xs text-black/40">JPG, PNG or WEBP · resized automatically · saved to the company Google Drive</div>
       </label>
-      {error && (
-        <div className="mt-2 flex items-center gap-1.5 text-xs text-[color:var(--color-brick)]">
-          <TriangleAlert size={12} className="shrink-0" /> {error}
+
+      {queue.length > 0 && (
+        <div className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-6">
+          {queue.map((item) => (
+            <div key={item.id} className="relative overflow-hidden rounded border border-black/10">
+              {/* eslint-disable-next-line @next/next/no-img-element -- local object URL preview, not a static import */}
+              <img src={item.previewUrl} alt="" className="aspect-square w-full object-cover" />
+              <div className="absolute inset-x-0 bottom-0 flex items-center justify-between gap-1 bg-black/60 px-1.5 py-1 text-[0.6rem] text-white">
+                <span className="truncate">{item.name}</span>
+                {item.status === "done" && <Check size={11} className="shrink-0 text-emerald-400" />}
+                {(item.status === "queued" || item.status === "compressing" || item.status === "uploading") && (
+                  <Loader2 size={11} className="shrink-0 animate-spin" />
+                )}
+              </div>
+              {item.status === "error" && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 bg-black/75 p-1.5 text-center">
+                  <TriangleAlert size={13} className="text-[color:var(--color-bronze)]" />
+                  <span className="line-clamp-2 text-[0.6rem] text-white/90">{item.error ?? "Upload failed"}</span>
+                  <button type="button" onClick={() => retry(item)} className="flex items-center gap-0.5 rounded bg-white/15 px-1.5 py-0.5 text-[0.6rem] text-white hover:bg-white/25">
+                    <RotateCcw size={10} /> Retry
+                  </button>
+                </div>
+              )}
+              {item.status === "done" && (
+                <button type="button" onClick={() => dismiss(item.id)} title="Dismiss" className="absolute right-1 top-1 flex h-4 w-4 items-center justify-center rounded-full bg-black/50 text-white hover:bg-black/70">
+                  <X size={10} />
+                </button>
+              )}
+            </div>
+          ))}
         </div>
       )}
     </div>

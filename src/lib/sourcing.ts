@@ -1,4 +1,5 @@
 import * as cheerio from "cheerio";
+import { districtForCity } from "./locations";
 
 // External Sourcing — spec: "connect to ikman.lk / LankaPropertyWeb to find
 // properties and match them to requirements." Scoped deliberately narrow:
@@ -43,7 +44,124 @@ export type SourcingResult = {
   url: string;
   imgUrl?: string;
   postedAgo?: string;
+  // Best-effort, parsed straight out of the fields above at fetch time —
+  // neither site exposes these as separate structured search results
+  // fields, so these are never authoritative, only good enough to filter
+  // and display a badge with. See parseBedroomsFromTitle/parsePriceToNumber.
+  bedrooms?: number;
 };
+
+// ---------------------------------------------------------------------------
+// Filtering — both sites' own search only reliably narrows by keyword
+// (LankaPropertyWeb also genuinely scopes district/property-type via its
+// URL path; ikman's search endpoint does not reliably do either from a
+// query string). Real accuracy comes from filtering the results we already
+// parsed, in our own code, against fields we already have — not from
+// guessing undocumented site query parameters.
+// ---------------------------------------------------------------------------
+
+export type SourcingFilters = {
+  district?: string;
+  propertyType?: string;
+  priceMin?: number;
+  priceMax?: number;
+  bedrooms?: number;
+  postedWithinDays?: number;
+};
+
+// "Rs. 25 Lakh", "Rs. 1.2 Million", "Rs. 145M" (LankaPropertyWeb's actual
+// everyday format — confirmed live in UAT, not just "Million" spelled out),
+// "Rs 25,000,000", "LKR 45,000" — the formats these two sites' price text
+// actually takes.
+//
+// The number pattern requires a leading digit (`\d+`, not the old `[\d.]+`)
+// — that old class included a bare "." as a valid match on its own, which
+// meant it matched the period in the "Rs." prefix itself before ever
+// reaching the real number, silently returning undefined for every "Rs. "
+// price. Caught live: with priceMax set, "Rs. 145M" results (well over the
+// cap) were still showing up because the filter thought the price hadn't
+// parsed at all and kept it per the "never hide on failed parse" rule.
+export function parsePriceToNumber(price: string | undefined): number | undefined {
+  if (!price) return undefined;
+  const cleaned = price.replace(/,/g, "");
+  const match = cleaned.match(/(\d+(?:\.\d+)?)\s*(lakh|lakhs|million|mn|m\b|cr|crore)?/i);
+  if (!match) return undefined;
+  const n = Number(match[1]);
+  if (Number.isNaN(n)) return undefined;
+  const unit = match[2]?.toLowerCase();
+  if (unit === "lakh" || unit === "lakhs") return n * 100_000;
+  if (unit === "million" || unit === "mn" || unit === "m") return n * 1_000_000;
+  if (unit === "cr" || unit === "crore") return n * 10_000_000;
+  return n;
+}
+
+// Neither site's search-result markup carries a separate bedroom-count
+// field — this is a best-effort read of the title text only, e.g. "3BR" /
+// "3 bed" / "3 bedroom". Never trusted enough to drop a result that simply
+// didn't mention it; only used to exclude a result that mentions a
+// *different* bedroom count than what was asked for.
+export function parseBedroomsFromTitle(title: string): number | undefined {
+  const match = title.match(/(\d+)\s*[-\s]?(?:bed|bedroom|br)\b/i);
+  if (!match) return undefined;
+  const n = Number(match[1]);
+  return Number.isNaN(n) ? undefined : n;
+}
+
+// "2 hours ago" / "3 days ago" / "1 week ago" / "2 months ago" → approx
+// days, for the "posted within" filter. ikman only; LankaPropertyWeb's
+// search results don't expose a posted date at all.
+export function parsePostedAgoToDays(postedAgo: string | undefined): number | undefined {
+  if (!postedAgo) return undefined;
+  const match = postedAgo.match(/(\d+)\s*(hour|day|week|month)/i);
+  if (!match) return undefined;
+  const n = Number(match[1]);
+  const unit = match[2].toLowerCase();
+  if (unit === "hour") return n / 24;
+  if (unit === "day") return n;
+  if (unit === "week") return n * 7;
+  if (unit === "month") return n * 30;
+  return undefined;
+}
+
+// A result's location text is whatever the site itself printed — often a
+// city ("Nugegoda"), not the district a user actually picked ("Colombo").
+// A plain substring match would wrongly exclude a real match, so this also
+// resolves each token through the app's own city→district table before
+// giving up.
+function locationMatchesDistrict(location: string | undefined, district: string): boolean {
+  if (!location) return true; // no location text to check — best-effort, don't hide it over a parse gap
+  const hay = location.toLowerCase();
+  if (hay.includes(district.toLowerCase())) return true;
+  const tokens = location.split(/[·,/\-]/).map((t) => t.trim()).filter(Boolean);
+  return tokens.some((t) => districtForCity(t) === district);
+}
+
+export function applyFilters(results: SourcingResult[], filters: SourcingFilters): SourcingResult[] {
+  return results.filter((r) => {
+    if (filters.district && !locationMatchesDistrict(r.location, filters.district)) return false;
+    if (filters.propertyType) {
+      const hay = `${r.location ?? ""} ${r.title}`.toLowerCase();
+      if (!hay.includes(filters.propertyType.toLowerCase())) return false;
+    }
+    if (filters.priceMin != null || filters.priceMax != null) {
+      const price = parsePriceToNumber(r.price);
+      if (price != null) {
+        if (filters.priceMin != null && price < filters.priceMin) return false;
+        if (filters.priceMax != null && price > filters.priceMax) return false;
+      }
+      // price didn't parse — keep it rather than hide a possibly-real match
+    }
+    if (filters.bedrooms != null) {
+      const beds = r.bedrooms ?? parseBedroomsFromTitle(r.title);
+      if (beds != null && beds !== filters.bedrooms) return false;
+    }
+    if (filters.postedWithinDays != null) {
+      const days = parsePostedAgoToDays(r.postedAgo);
+      if (days != null && days > filters.postedWithinDays) return false;
+    }
+    return true;
+  });
+}
 
 // ---------------------------------------------------------------------------
 // ikman.lk — search results embed a clean JSON state blob
@@ -99,16 +217,20 @@ export async function searchIkman(query: string): Promise<SourcingResult[]> {
     | { serp?: { ads?: { data?: { ads?: Array<Record<string, unknown>> } } } }
     | null;
   const ads = data?.serp?.ads?.data?.ads ?? [];
-  return ads.slice(0, 20).map((ad) => ({
-    source: "ikman" as const,
-    title: String(ad.title ?? ""),
-    price: ad.price ? String(ad.price) : undefined,
-    location: [ad.location, (ad.category as { name?: string } | undefined)?.name].filter(Boolean).join(" · ") || undefined,
-    size: ad.details ? String(ad.details) : undefined,
-    url: `https://ikman.lk/en/ad/${ad.slug}`,
-    imgUrl: ad.imgUrl ? String(ad.imgUrl) : undefined,
-    postedAgo: ad.timeStamp ? String(ad.timeStamp) : undefined,
-  }));
+  return ads.slice(0, 20).map((ad) => {
+    const title = String(ad.title ?? "");
+    return {
+      source: "ikman" as const,
+      title,
+      price: ad.price ? String(ad.price) : undefined,
+      location: [ad.location, (ad.category as { name?: string } | undefined)?.name].filter(Boolean).join(" · ") || undefined,
+      size: ad.details ? String(ad.details) : undefined,
+      url: `https://ikman.lk/en/ad/${ad.slug}`,
+      imgUrl: ad.imgUrl ? String(ad.imgUrl) : undefined,
+      postedAgo: ad.timeStamp ? String(ad.timeStamp) : undefined,
+      bedrooms: parseBedroomsFromTitle(title),
+    };
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -160,6 +282,7 @@ export async function searchLankaPropertyWeb(opts: { dealType: "BUY" | "RENT" | 
       price: price || undefined,
       location: location || undefined,
       size: sizeCount ? `${sizeCount} ${sizeText}` : undefined,
+      bedrooms: parseBedroomsFromTitle(title),
       url: href.startsWith("http") ? href : `https://www.lankapropertyweb.com${href}`,
       imgUrl: img && img.startsWith("http") ? img : undefined,
     });
@@ -214,4 +337,37 @@ export async function fetchListingText(url: string): Promise<{ text: string; img
     .join("\n")
     .slice(0, 6000);
   return { text, imgUrl };
+}
+
+// Sri Lankan mobile/landline formats as they actually appear in listing
+// text: +9471..., 071..., 011-2345678, with optional spaces/dashes.
+const SL_PHONE_RE = /(?:\+94|0)\s?(?:\d[\s-]?){9}/;
+
+// For "save this listing's poster as a contact" — a lighter, separate path
+// from fetchListingText/AI Intake (that one folds contact info into a text
+// blob for the LLM; this pulls it out as structured fields for a small
+// editable form). ikman exposes a real contactCard (name + phone) in its
+// JSON state, so that path is reliable; LankaPropertyWeb's markup has no
+// equivalent structured element, so only a best-effort phone regex is
+// attempted there and name is left for the human to fill in.
+export async function extractPosterContact(url: string): Promise<{ name?: string; phone?: string }> {
+  if (!isAllowedSourceUrl(url)) throw new Error("Only ikman.lk and lankapropertyweb.com listing links are supported.");
+  const html = await fetchHtml(url);
+
+  if (url.includes("ikman.lk")) {
+    const data = extractJsAssignment(html, "window.initialData = ") as
+      | { adDetail?: { data?: { ad?: Record<string, unknown> } } }
+      | null;
+    const ad = data?.adDetail?.data?.ad;
+    const contact = ad?.contactCard as { name?: string; phoneNumbers?: { number?: string }[] } | undefined;
+    if (contact?.name || contact?.phoneNumbers?.[0]?.number) {
+      return { name: contact?.name, phone: contact?.phoneNumbers?.[0]?.number };
+    }
+  }
+
+  const $ = cheerio.load(html);
+  $("script, style, nav, header, footer, svg").remove();
+  const bodyText = $("body").text();
+  const phoneMatch = bodyText.match(SL_PHONE_RE);
+  return { phone: phoneMatch?.[0]?.replace(/[\s-]/g, "") };
 }

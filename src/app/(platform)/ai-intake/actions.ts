@@ -3,10 +3,11 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
-import { nextPropertyRef, nextRequirementRef, nextContactRef } from "@/lib/refs";
+import { nextPropertyRef, nextRequirementRef } from "@/lib/refs";
 import { writeAudit, logActivity } from "@/lib/audit";
 import { runAiIntake } from "@/lib/ai-intake";
 import { districtForCity } from "@/lib/locations";
+import { findOrCreateContact } from "@/lib/contacts";
 import type { IntakeResult, PropertyDraftFields, RequirementDraftFields } from "@/lib/intake-types";
 
 export async function extractAction(rawText: string, mode: "PROPERTY" | "REQUIREMENT" | "AUTO" | "UPDATE"): Promise<IntakeResult> {
@@ -24,36 +25,6 @@ export async function extractAction(rawText: string, mode: "PROPERTY" | "REQUIRE
   });
 
   return result;
-}
-
-async function findOrCreateContact(
-  name: string | undefined,
-  phone: string | undefined,
-  type: "OWNER" | "BUYER" | "TENANT",
-  agentId: string,
-  opts?: { source?: string; capacity?: "INDIVIDUAL" | "COMPANY" | "REPRESENTATIVE"; alternatePhone?: string },
-) {
-  if (phone) {
-    const existing = await prisma.contact.findFirst({ where: { OR: [{ phone }, { whatsapp: phone }] } });
-    if (existing) return existing.id;
-  }
-  const contact = await prisma.contact.create({
-    data: {
-      contactRef: await nextContactRef(),
-      name: name || "Unnamed contact",
-      contactType: type,
-      capacity: (opts?.capacity ?? "INDIVIDUAL") as never,
-      phone: phone ?? "",
-      whatsapp: phone,
-      assignedAgentId: agentId,
-      source: opts?.source ?? "Imperium AI Intake",
-      // Contact has one phone column — a second number the source text
-      // gave has nowhere structured to go, so it's recorded here rather
-      // than silently dropped.
-      notes: opts?.alternatePhone ? `Alternate phone: ${opts.alternatePhone}` : undefined,
-    },
-  });
-  return contact.id;
 }
 
 // Deterministic, not model-dependent: guarantees these survive into the

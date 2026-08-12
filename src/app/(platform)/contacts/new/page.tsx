@@ -5,7 +5,7 @@ import { PageHeader } from "@/components/ui";
 import { ContactForm } from "../ContactForm";
 import { createContact } from "../actions";
 
-const VALID_TYPES = ["OWNER", "BUYER", "TENANT", "BROKER", "DEVELOPER", "INVESTOR", "CORPORATE"];
+const VALID_TYPES = ["OWNER", "BUYER", "TENANT", "BROKER", "DEVELOPER", "INVESTOR", "CORPORATE", "OUTSOURCED"];
 
 export default async function NewContactPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   await requireRole(SALES_TEAM_ROLES);

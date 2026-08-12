@@ -2,10 +2,9 @@
 
 import { useState, useTransition } from "react";
 import Link from "next/link";
-import { Search, Download, Check, X, Loader2, ExternalLink } from "lucide-react";
-import { searchExternalListings, importListing } from "./actions";
+import { Search, Download, Check, X, Loader2, ExternalLink, UserPlus, CheckCircle2 } from "lucide-react";
+import { searchExternalListings, importListing, extractContactFromListing, saveOutsourcedContact, type SourcingSearchResult } from "./actions";
 import { approvePropertyDraft } from "../ai-intake/actions";
-import type { SourcingResult } from "@/lib/sourcing";
 import type { Draft, PropertyDraftFields } from "@/lib/intake-types";
 import { ALL_DISTRICTS, PROPERTY_SUBTYPES } from "@/lib/locations";
 import { titleCase } from "@/lib/format";
@@ -35,8 +34,13 @@ export function SourcingClient({
   const [dealType, setDealType] = useState<"BUY" | "RENT" | "LEASE">(initialDealType);
   const [district, setDistrict] = useState(initialDistrict);
   const [propertyType, setPropertyType] = useState(initialPropertyType);
+  const [priceMin, setPriceMin] = useState("");
+  const [priceMax, setPriceMax] = useState("");
+  const [bedrooms, setBedrooms] = useState("");
+  const [postedWithinDays, setPostedWithinDays] = useState("");
+  const [moreFilters, setMoreFilters] = useState(false);
   const [pasteUrl, setPasteUrl] = useState("");
-  const [results, setResults] = useState<SourcingResult[]>([]);
+  const [results, setResults] = useState<SourcingSearchResult[]>([]);
   const [errors, setErrors] = useState<string[]>([]);
   const [searched, setSearched] = useState(false);
   const [pending, startTransition] = useTransition();
@@ -54,7 +58,17 @@ export function SourcingClient({
     setDraft(null);
     setApproved(null);
     startTransition(async () => {
-      const res = await searchExternalListings({ sites, keyword, dealType, district: district || undefined, propertyType: propertyType || undefined });
+      const res = await searchExternalListings({
+        sites,
+        keyword,
+        dealType,
+        district: district || undefined,
+        propertyType: propertyType || undefined,
+        priceMin: priceMin ? Number(priceMin) : undefined,
+        priceMax: priceMax ? Number(priceMax) : undefined,
+        bedrooms: bedrooms ? Number(bedrooms) : undefined,
+        postedWithinDays: postedWithinDays ? Number(postedWithinDays) : undefined,
+      });
       setResults(res.results);
       setErrors(res.errors);
     });
@@ -115,7 +129,37 @@ export function SourcingClient({
               <input type="checkbox" checked={sites.includes("lankapropertyweb")} onChange={() => toggleSite("lankapropertyweb")} className="h-4 w-4 accent-ir-gold-dark" /> LankaPropertyWeb
             </label>
           </div>
+          <div className="flex items-end lg:col-span-2">
+            <button type="button" onClick={() => setMoreFilters((v) => !v)} className="text-xs font-medium text-ir-gold-dark hover:underline">
+              {moreFilters ? "Fewer filters" : "+ Price, bedrooms, posted date"}
+            </button>
+          </div>
         </div>
+
+        {moreFilters && (
+          <div className="mb-4 grid grid-cols-2 gap-3 border-t border-black/6 pt-4 sm:grid-cols-4">
+            <div>
+              <label className="ir-label mb-1 block">Min price (LKR)</label>
+              <input type="number" value={priceMin} onChange={(e) => setPriceMin(e.target.value)} placeholder="0" className="ir-input" />
+            </div>
+            <div>
+              <label className="ir-label mb-1 block">Max price (LKR)</label>
+              <input type="number" value={priceMax} onChange={(e) => setPriceMax(e.target.value)} placeholder="No limit" className="ir-input" />
+            </div>
+            <div>
+              <label className="ir-label mb-1 block">Bedrooms</label>
+              <input type="number" min="0" value={bedrooms} onChange={(e) => setBedrooms(e.target.value)} placeholder="Any" className="ir-input" />
+            </div>
+            <div>
+              <label className="ir-label mb-1 block">Posted within (days)</label>
+              <input type="number" min="1" value={postedWithinDays} onChange={(e) => setPostedWithinDays(e.target.value)} placeholder="Any time" className="ir-input" />
+            </div>
+            <p className="col-span-2 text-[0.65rem] text-black/35 sm:col-span-4">
+              Price/bedrooms/posted-date are read from each listing&apos;s own text, not a structured field either site exposes — best-effort: a result missing that detail is kept rather than hidden.
+            </p>
+          </div>
+        )}
+
         <button onClick={search} disabled={pending || sites.length === 0} className="ir-btn ir-btn-gold px-5 disabled:opacity-50">
           {pending && !importing ? <Loader2 size={15} className="animate-spin" /> : <Search size={15} />}
           Search live listings
@@ -169,25 +213,122 @@ export function SourcingClient({
       {searched && (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {results.map((r, i) => (
-            <div key={i} className="ir-card flex flex-col p-4">
-              <div className="mb-2 flex items-center justify-between">
-                <span className="ir-badge border-[#09152640] bg-[#0915260d] text-ir-navy">{SOURCE_LABEL[r.source]}</span>
-                {r.postedAgo && <span className="text-[0.65rem] text-black/35">{r.postedAgo}</span>}
-              </div>
-              <h3 className="mb-1 line-clamp-2 text-sm font-semibold text-ir-navy">{r.title}</h3>
-              <p className="mb-1 text-xs text-black/45">{r.location}{r.size ? ` · ${r.size}` : ""}</p>
-              {r.price && <p className="ir-figure mb-3 text-lg text-ir-gold-dark">{r.price}</p>}
-              <div className="mt-auto flex items-center gap-2">
-                <button onClick={() => doImport(r.url, r.source)} disabled={pending} className="ir-btn ir-btn-primary flex-1 justify-center !text-xs disabled:opacity-50">
-                  {importing === r.url ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />} Import &amp; review
+            <ResultCard key={i} result={r} pending={pending} importing={importing} onImport={doImport} />
+          ))}
+          {results.length === 0 && !pending && <p className="col-span-full text-center text-xs text-black/40 py-10">No results. Try a different keyword, or loosen a filter.</p>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ResultCard({
+  result: r,
+  pending,
+  importing,
+  onImport,
+}: {
+  result: SourcingSearchResult;
+  pending: boolean;
+  importing: string | null;
+  onImport: (url: string, source: "ikman" | "lankapropertyweb") => void;
+}) {
+  const [showSave, setShowSave] = useState(false);
+  const [loadingContact, setLoadingContact] = useState(false);
+  const [contactFields, setContactFields] = useState<{ name: string; phone: string }>({ name: "", phone: "" });
+  const [contactError, setContactError] = useState<string | null>(null);
+  const [savedContactId, setSavedContactId] = useState<string | null>(null);
+  const [saving, startSaving] = useTransition();
+
+  function openSaveContact() {
+    setShowSave(true);
+    setContactError(null);
+    setLoadingContact(true);
+    startSaving(async () => {
+      const res = await extractContactFromListing(r.url);
+      setLoadingContact(false);
+      if (res.error) setContactError(res.error);
+      setContactFields({ name: res.name ?? "", phone: res.phone ?? "" });
+    });
+  }
+
+  function confirmSaveContact() {
+    if (!contactFields.name.trim() || !contactFields.phone.trim()) {
+      setContactError("Name and phone are both needed to save a contact.");
+      return;
+    }
+    setContactError(null);
+    startSaving(async () => {
+      const res = await saveOutsourcedContact({ name: contactFields.name.trim(), phone: contactFields.phone.trim() }, r.url, r.source);
+      setSavedContactId(res.id);
+      setShowSave(false);
+    });
+  }
+
+  return (
+    <div className="ir-card flex flex-col p-4">
+      <div className="mb-2 flex items-center justify-between">
+        <span className="ir-badge border-[#09152640] bg-[#0915260d] text-ir-navy">{SOURCE_LABEL[r.source]}</span>
+        {r.postedAgo && <span className="text-[0.65rem] text-black/35">{r.postedAgo}</span>}
+      </div>
+      <h3 className="mb-1 line-clamp-2 text-sm font-semibold text-ir-navy">{r.title}</h3>
+      <p className="mb-1 text-xs text-black/45">
+        {r.location}{r.size ? ` · ${r.size}` : ""}{r.bedrooms ? ` · ${r.bedrooms} bed` : ""}
+      </p>
+      {r.price && <p className="ir-figure mb-3 text-lg text-ir-gold-dark">{r.price}</p>}
+
+      {r.alreadyImportedPropertyId ? (
+        <Link href={`/properties/${r.alreadyImportedPropertyId}`} className="mt-auto flex items-center justify-center gap-1.5 rounded border border-[color:var(--color-forest)]/30 bg-[color:var(--color-forest)]/10 px-3 py-2 text-xs font-medium text-[color:var(--color-forest)]">
+          <CheckCircle2 size={13} /> Already in database →
+        </Link>
+      ) : (
+        <div className="mt-auto flex items-center gap-2">
+          <button onClick={() => onImport(r.url, r.source)} disabled={pending} className="ir-btn ir-btn-primary flex-1 justify-center !text-xs disabled:opacity-50">
+            {importing === r.url ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />} Import &amp; review
+          </button>
+          {savedContactId ? (
+            <Link href={`/contacts/${savedContactId}`} className="ir-btn ir-btn-ghost !px-2.5 !text-xs text-[color:var(--color-forest)]" title="Contact saved">
+              <CheckCircle2 size={13} />
+            </Link>
+          ) : (
+            <button onClick={openSaveContact} disabled={pending} className="ir-btn ir-btn-ghost !px-2.5" title="Save poster as an outsourced contact">
+              <UserPlus size={13} />
+            </button>
+          )}
+          <a href={r.url} target="_blank" rel="noreferrer" className="ir-btn ir-btn-ghost !px-2.5">
+            <ExternalLink size={13} />
+          </a>
+        </div>
+      )}
+
+      {showSave && (
+        <div className="mt-3 rounded border border-black/10 bg-ir-ivory/60 p-3">
+          <div className="ir-label mb-2">Save as outsourced contact</div>
+          {loadingContact ? (
+            <div className="flex items-center gap-1.5 text-xs text-black/40"><Loader2 size={12} className="animate-spin" /> Reading listing…</div>
+          ) : (
+            <div className="space-y-2">
+              <input
+                value={contactFields.name}
+                onChange={(e) => setContactFields((f) => ({ ...f, name: e.target.value }))}
+                placeholder="Name"
+                className="ir-input !text-xs"
+              />
+              <input
+                value={contactFields.phone}
+                onChange={(e) => setContactFields((f) => ({ ...f, phone: e.target.value }))}
+                placeholder="Phone"
+                className="ir-input !text-xs"
+              />
+              {contactError && <p className="text-[0.7rem] text-[color:var(--color-brick)]">{contactError}</p>}
+              <div className="flex justify-end gap-2">
+                <button onClick={() => setShowSave(false)} className="text-xs text-black/40 hover:text-ir-navy">Cancel</button>
+                <button onClick={confirmSaveContact} disabled={saving} className="ir-btn ir-btn-gold !py-1 !text-xs disabled:opacity-50">
+                  {saving ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />} Save contact
                 </button>
-                <a href={r.url} target="_blank" rel="noreferrer" className="ir-btn ir-btn-ghost !px-2.5">
-                  <ExternalLink size={13} />
-                </a>
               </div>
             </div>
-          ))}
-          {results.length === 0 && !pending && <p className="col-span-full text-center text-xs text-black/40 py-10">No results. Try a different keyword or district.</p>}
+          )}
         </div>
       )}
     </div>

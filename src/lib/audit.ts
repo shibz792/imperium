@@ -24,10 +24,11 @@ export async function writeAudit(opts: {
 }
 
 export async function logActivity(opts: {
-  entityType: "property" | "requirement" | "deal";
+  entityType: "property" | "requirement" | "deal" | "contact";
   propertyId?: string;
   requirementId?: string;
   dealId?: string;
+  contactId?: string;
   type: string;
   message: string;
   userId?: string | null;
@@ -38,6 +39,7 @@ export async function logActivity(opts: {
       propertyId: opts.propertyId,
       requirementId: opts.requirementId,
       dealId: opts.dealId,
+      contactId: opts.contactId,
       type: opts.type,
       message: opts.message,
       userId: opts.userId ?? null,

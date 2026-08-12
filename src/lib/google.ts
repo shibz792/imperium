@@ -391,15 +391,20 @@ async function makeFilePublic(userId: string, fileId: string): Promise<void> {
   });
 }
 
+export type UploadResult = { ok: true; fileId: string } | { ok: false; error: string };
+
 // Uploads bytes into a folder in the storage account's Drive, makes the
 // file link-viewable (property photos aren't confidential — the same shots
-// already go out over WhatsApp), and returns its file id. null on any
-// failure, including "no storage account configured yet".
-export async function uploadToPropertyFolder(folderId: string, buffer: Buffer, name: string, mimeType: string): Promise<string | null> {
+// already go out over WhatsApp). Unlike most functions in this file, this
+// returns a real error message rather than collapsing every failure into
+// null — a rate-limited batch upload and "no storage account configured"
+// need different messages shown to the person uploading, not the same
+// generic "upload failed" for both.
+export async function uploadToPropertyFolder(folderId: string, buffer: Buffer, name: string, mimeType: string): Promise<UploadResult> {
   const storageUserId = await getStorageAccountUserId();
-  if (!storageUserId) return null;
+  if (!storageUserId) return { ok: false, error: "No Drive storage account is configured yet." };
   const token = await getValidAccessToken(storageUserId);
-  if (!token) return null;
+  if (!token) return { ok: false, error: "The Drive storage account needs to be reconnected." };
 
   const boundary = `imperium-${crypto.randomUUID()}`;
   const metadata = JSON.stringify({ name, parents: [folderId] });
@@ -413,10 +418,15 @@ export async function uploadToPropertyFolder(folderId: string, buffer: Buffer, n
     headers: { Authorization: `Bearer ${token}`, "Content-Type": `multipart/related; boundary=${boundary}` },
     body: multipartBody,
   });
-  if (!res || !res.ok) return null;
+  if (!res) return { ok: false, error: "Network error reaching Google Drive." };
+  if (!res.ok) {
+    if (res.status === 429) return { ok: false, error: "Google Drive rate limit reached — wait a moment and retry." };
+    if (res.status === 403) return { ok: false, error: "Google Drive denied the upload — the storage account may need reconnecting." };
+    return { ok: false, error: `Google Drive upload failed (${res.status}).` };
+  }
   const data = (await res.json()) as { id: string };
   await makeFilePublic(storageUserId, data.id);
-  return data.id;
+  return { ok: true, fileId: data.id };
 }
 
 export async function trashDriveFile(fileId: string): Promise<boolean> {

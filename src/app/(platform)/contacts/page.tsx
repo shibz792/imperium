@@ -17,7 +17,7 @@ import { ContactsBulkActions, type ContactExportRow } from "./ContactsBulkAction
 import type { Prisma } from "@/generated/prisma/client";
 import { deleteContact } from "./actions";
 
-const TYPE_TONE: Record<string, string> = { OWNER: "gold", BUYER: "blue", TENANT: "green", BROKER: "navy", DEVELOPER: "amber", INVESTOR: "gray", CORPORATE: "navy" };
+const TYPE_TONE: Record<string, string> = { OWNER: "gold", BUYER: "blue", TENANT: "green", BROKER: "navy", DEVELOPER: "amber", INVESTOR: "gray", CORPORATE: "navy", OUTSOURCED: "red" };
 
 export default async function ContactsPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   const sp = await searchParams;
@@ -79,7 +79,7 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
           <label className="ir-label mb-1 block">Type</label>
           <select name="type" defaultValue={sp.type ?? ""} className="ir-select">
             <option value="">All</option>
-            {["OWNER", "BUYER", "TENANT", "BROKER", "DEVELOPER", "INVESTOR", "CORPORATE"].map((t) => (
+            {["OWNER", "BUYER", "TENANT", "BROKER", "DEVELOPER", "INVESTOR", "CORPORATE", "OUTSOURCED"].map((t) => (
               <option key={t} value={t}>{titleCase(t)}</option>
             ))}
           </select>

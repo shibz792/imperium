@@ -1,6 +1,15 @@
 import type { Property, Requirement } from "@/generated/prisma/client";
 import { formatCurrency, titleCase } from "@/lib/format";
 
+// /api/drive-media/[fileId] resizes on the fly when given a ?w= hint (see
+// that route) — every small thumbnail render (list rows, cards, gallery
+// tiles) should ask for one instead of paying for the full original Drive
+// file just to show it at 60px. Full-size contexts (the media grid's
+// lightbox, a share page's own hero photo) call the bare url instead.
+export function thumbUrl(url: string, width = 400): string {
+  return `${url}${url.includes("?") ? "&" : "?"}w=${width}`;
+}
+
 // One place for the business contact details every outbound message signs
 // off with.
 export const BUSINESS_WEBSITE = "imperiumrealty.co";

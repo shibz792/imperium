@@ -56,28 +56,30 @@ model User {
   commissionRate          Float?
   createdAt               DateTime           @default(now())
 
-  assignedProperties        Property[]          @relation("PropertyAgent")
+  assignedProperties        Property[]              @relation("PropertyAgent")
   assignedContacts          Contact[]
-  assignedRequirements      Requirement[]       @relation("RequirementAgent")
-  assignedDeals             Deal[]              @relation("DealAgent")
+  assignedRequirements      Requirement[]           @relation("RequirementAgent")
+  assignedDeals             Deal[]                  @relation("DealAgent")
   // Multiple agents can work the same listing/requirement/deal together —
   // "assigned" is the primary owner, "collaborating" is everyone else on it.
-  collaboratingProperties   Property[]          @relation("PropertyCollaborators")
-  collaboratingRequirements Requirement[]       @relation("RequirementCollaborators")
-  collaboratingDeals        Deal[]              @relation("DealCollaborators")
-  viewingsAsAgent           Viewing[]           @relation("ViewingAgent")
-  tasks                     Task[]              @relation("TaskAssignee")
-  tasksCreated              Task[]              @relation("TaskCreator")
+  collaboratingProperties   Property[]              @relation("PropertyCollaborators")
+  collaboratingRequirements Requirement[]           @relation("RequirementCollaborators")
+  collaboratingDeals        Deal[]                  @relation("DealCollaborators")
+  viewingsAsAgent           Viewing[]               @relation("ViewingAgent")
+  tasks                     Task[]                  @relation("TaskAssignee")
+  tasksCreated              Task[]                  @relation("TaskCreator")
   auditLogs                 AuditLog[]
   activities                Activity[]
   aiIntakeJobs              AiIntakeJob[]
   documentsUploaded         Document[]
-  marketingApproved         MarketingAsset[]    @relation("MarketingApprover")
+  marketingApproved         MarketingAsset[]        @relation("MarketingApprover")
   notes                     Note[]
   googleAccount             GoogleAccount?
-  metaAccountsConnected     MetaAccount[]       @relation("MetaConnector")
-  metaPostsPublished        MetaPublishedPost[] @relation("MetaPublisher")
-  metaCampaignsCreated      MetaCampaign[]      @relation("MetaCampaignCreator")
+  metaAccountsConnected     MetaAccount[]           @relation("MetaConnector")
+  metaPostsPublished        MetaPublishedPost[]     @relation("MetaPublisher")
+  metaCampaignsCreated      MetaCampaign[]          @relation("MetaCampaignCreator")
+  excludedFromContacts      ContactAgentExclusion[] @relation("ExcludedFromContact")
+  contactExclusionsCreated  ContactAgentExclusion[] @relation("ContactExclusionCreator")
 }
 
 // One connected Google account per user — Calendar (two-way: viewings/tasks
@@ -119,6 +121,12 @@ enum ContactType {
   DEVELOPER
   INVESTOR
   CORPORATE
+  // A listing poster picked up via External Sourcing (ikman.lk /
+  // LankaPropertyWeb) — deliberately its own type, not folded into BROKER:
+  // we don't yet know if they're the owner, an informal middleman, or a
+  // real co-broking partner, just that we found them on a public listing
+  // and want to keep a record without pretending to know more than we do.
+  OUTSOURCED
 }
 
 // Kept deliberately thin: Sri Lankan lead intake in practice is "name,
@@ -153,16 +161,39 @@ model Contact {
   createdAt         DateTime        @default(now())
   updatedAt         DateTime        @updatedAt
 
-  ownedProperties Property[]    @relation("PropertyOwner")
-  requirements    Requirement[] @relation("RequirementClient")
-  dealsAsClient   Deal[]        @relation("DealClient")
-  dealsAsBroker   Deal[]        @relation("DealOtherBroker")
-  viewings        Viewing[]     @relation("ViewingContact")
+  ownedProperties Property[]              @relation("PropertyOwner")
+  requirements    Requirement[]           @relation("RequirementClient")
+  dealsAsClient   Deal[]                  @relation("DealClient")
+  dealsAsBroker   Deal[]                  @relation("DealOtherBroker")
+  viewings        Viewing[]               @relation("ViewingContact")
   documents       Document[]
+  activities      Activity[]
+  agentExclusions ContactAgentExclusion[]
 
   @@index([contactType])
   @@index([assignedAgentId])
   @@index([district])
+}
+
+// "This contact has told us they won't work with agent X" — a real,
+// specific fact worth recording (a past dispute, a personal conflict),
+// not something to silently drop. Enforced at the point an agent would
+// actually be assigned to this contact (updateContact / bulk reassign),
+// and surfaced as a warning to the excluded agent themselves wherever
+// they view the contact.
+model ContactAgentExclusion {
+  id          String   @id @default(cuid())
+  contactId   String
+  contact     Contact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  agentId     String
+  agent       User     @relation("ExcludedFromContact", fields: [agentId], references: [id], onDelete: Cascade)
+  reason      String?
+  createdById String?
+  createdBy   User?    @relation("ContactExclusionCreator", fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+
+  @@unique([contactId, agentId])
+  @@index([agentId])
 }
 
 // ---------------------------------------------------------------------------
@@ -377,6 +408,12 @@ model PropertyMedia {
   // property, enforced in the setCoverPhoto action (unset the rest, then
   // set this one) rather than in the schema.
   isCover     Boolean   @default(false)
+  // Manual gallery position, independent of isCover — the cover photo
+  // always renders first regardless of its own `order` value (see the
+  // orderBy in every query against this model: isCover desc, order asc),
+  // this only controls the arrangement of the rest. New uploads append at
+  // the end (max(order)+1); reorderPropertyMedia rewrites these in bulk.
+  order       Int       @default(0)
   createdAt   DateTime  @default(now())
 
   @@index([propertyId])
@@ -1042,6 +1079,8 @@ model Activity {
   requirement   Requirement? @relation(fields: [requirementId], references: [id])
   dealId        String?
   deal          Deal?        @relation(fields: [dealId], references: [id])
+  contactId     String?
+  contact       Contact?     @relation(fields: [contactId], references: [id])
   type          String
   message       String
   userId        String?
@@ -1051,6 +1090,7 @@ model Activity {
   @@index([propertyId])
   @@index([requirementId])
   @@index([dealId])
+  @@index([contactId])
   @@index([createdAt])
 }
 

@@ -2,7 +2,7 @@ import { Lock, MapPin, Ruler, BedDouble, Bath, CheckCircle2 } from "lucide-react
 import { prisma } from "@/lib/prisma";
 import { Logo } from "@/components/Logo";
 import { formatCurrency, titleCase } from "@/lib/format";
-import { primarySize, relevantAskingPrice, priceUnit } from "@/lib/property";
+import { primarySize, relevantAskingPrice, priceUnit, thumbUrl } from "@/lib/property";
 import { unlockSharePage, isShareUnlocked } from "./actions";
 
 // Public, no login — this is the whole point of a share page: something
@@ -71,7 +71,7 @@ export default async function SharePagePublic({ params, searchParams }: { params
         <div className="ir-card overflow-hidden">
           {cover ? (
             // eslint-disable-next-line @next/next/no-img-element -- Drive-proxied bytes, not a static import
-            <img src={cover} alt={p.title} className="h-72 w-full object-cover sm:h-96" />
+            <img src={thumbUrl(cover, 1200)} alt={p.title} className="h-72 w-full object-cover sm:h-96" />
           ) : (
             <div className="flex h-56 items-center justify-center bg-ir-navy text-white/20">No photo yet</div>
           )}
@@ -129,7 +129,7 @@ export default async function SharePagePublic({ params, searchParams }: { params
               <div className="mb-5 grid grid-cols-3 gap-2">
                 {gallery.map((m) => (
                   // eslint-disable-next-line @next/next/no-img-element -- Drive-proxied bytes, not a static import
-                  <img key={m.id} src={m.url} alt="" className="h-24 w-full rounded object-cover" />
+                  <img key={m.id} src={thumbUrl(m.url, 300)} alt="" className="h-24 w-full rounded object-cover" />
                 ))}
               </div>
             )}

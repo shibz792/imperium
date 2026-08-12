@@ -9,6 +9,19 @@ import sharp from "sharp";
 // SVG text rendering (via librsvg/fontconfig) isn't guaranteed to have
 // custom fonts available in a serverless environment, and a font that
 // silently falls back mid-deploy is worse than one chosen to always resolve.
+//
+// The one narrow exception: generateSocialImage (marketing-studio/actions.ts)
+// falls back to a Pollinations-generated background when a listing has no
+// real photo yet (e.g. a pre-launch/off-plan property). That's still never
+// presented as the actual unit — composeSocialImage's `aiConcept` flag bakes
+// a permanent "AI CONCEPT — NOT ACTUAL PROPERTY" badge into the pixels so
+// the disclosure can't be cropped or stripped out after download.
+//
+// A content piece must never fail to get its image just because a free,
+// best-effort third-party service happened to be slow or unreachable —
+// brandGradientBackground() below is the guaranteed last resort: generated
+// entirely locally (no network call, can't fail the way a fetch can), so
+// generateSocialImage always has *something* to composite text onto.
 
 export type SocialImageFormat = "1:1" | "9:16";
 
@@ -23,6 +36,7 @@ const DIMENSIONS: Record<SocialImageFormat, { width: number; height: number }> =
 const NAVY = "#091526";
 const GOLD = "#cca274";
 const IVORY = "#f5f2ed";
+const BRICK = "#8c4a3e";
 
 function escapeXml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
@@ -47,9 +61,29 @@ function wrapLine(text: string, maxChars: number): string[] {
   return lines.slice(0, 2);
 }
 
+// Guaranteed, network-free fallback: a plain on-brand gradient panel. Not
+// a photo and doesn't pretend to be one, so it carries none of the AI
+// disclosure badges — there's nothing to disclose, it's just a background
+// color. Used only when both a real photo and the Pollinations concept
+// image are unavailable.
+export async function brandGradientBackground(format: SocialImageFormat): Promise<Buffer> {
+  const { width, height } = DIMENSIONS[format];
+  const svg = `
+<svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="${NAVY}" />
+      <stop offset="100%" stop-color="#1c2f4d" />
+    </linearGradient>
+  </defs>
+  <rect width="${width}" height="${height}" fill="url(#bg)" />
+</svg>`.trim();
+  return sharp(Buffer.from(svg)).png().toBuffer();
+}
+
 export async function composeSocialImage(
   photoBuffer: Buffer,
-  opts: { headline: string; tagline: string; priceLine: string; format: SocialImageFormat },
+  opts: { headline: string; tagline: string; priceLine: string; format: SocialImageFormat; aiConcept?: boolean; aiEnhanced?: boolean },
 ): Promise<Buffer> {
   const { width, height } = DIMENSIONS[opts.format];
   const scrimHeight = Math.round(height * (opts.format === "9:16" ? 0.4 : 0.42));
@@ -72,6 +106,29 @@ export async function composeSocialImage(
   const hairlineY = priceY + 34;
   const wordmarkY = hairlineY + 38;
 
+  // Two distinct disclosure levels, both baked permanently into the pixels
+  // (not just UI text around the image) so the disclosure can't be cropped
+  // or stripped out after download:
+  //  - aiConcept: the whole photo is an AI-generated stand-in (no real
+  //    property photo exists yet) — loud, brick-red, impossible to miss.
+  //  - aiEnhanced: it's still the listing's own real photo, only retouched
+  //    (lighting/color/sky) by Pollinations' Kontext model — a quiet,
+  //    on-brand gold pill, since nothing about the room itself changed.
+  // Mutually exclusive by construction (generateSocialImage only enhances
+  // when a real photo was found, and only falls back to a concept image
+  // when none was) — aiConcept wins if both were ever somehow set.
+  const badgeText = opts.aiConcept ? "AI CONCEPT — NOT ACTUAL PROPERTY" : opts.aiEnhanced ? "AI-ENHANCED PHOTO" : "";
+  const badgeFill = opts.aiConcept ? BRICK : NAVY;
+  const badgeTextFill = opts.aiConcept ? IVORY : GOLD;
+  const badgeFontSize = Math.round(width * 0.021);
+  const badgePadX = Math.round(badgeFontSize * 0.9);
+  const badgeWidth = Math.round(badgeText.length * badgeFontSize * 0.62) + badgePadX * 2;
+  const badgeHeight = Math.round(badgeFontSize * 2.1);
+  const badge = badgeText
+    ? `<rect x="${margin}" y="${margin}" width="${badgeWidth}" height="${badgeHeight}" rx="${badgeHeight / 2}" fill="${badgeFill}" fill-opacity="${opts.aiConcept ? 1 : 0.85}" />
+  <text x="${margin + badgeWidth / 2}" y="${margin + badgeHeight / 2 + badgeFontSize * 0.34}" font-family="Arial, Helvetica, sans-serif" font-size="${badgeFontSize}" font-weight="bold" letter-spacing="1" fill="${badgeTextFill}" text-anchor="middle">${escapeXml(badgeText)}</text>`
+    : "";
+
   const svg = `
 <svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
   <defs>
@@ -87,6 +144,7 @@ export async function composeSocialImage(
   <text x="${margin}" y="${priceY}" font-family="Arial, Helvetica, sans-serif" font-size="${priceSize}" font-weight="bold" fill="${GOLD}">${escapeXml(opts.priceLine)}</text>
   <rect x="${margin}" y="${hairlineY}" width="${Math.round(width * 0.16)}" height="2" fill="${GOLD}" />
   <text x="${margin}" y="${wordmarkY}" font-family="Arial, Helvetica, sans-serif" font-size="${wordmarkSize}" letter-spacing="3" fill="${IVORY}" fill-opacity="0.75">IMPERIUM REALTY</text>
+  ${badge}
 </svg>`.trim();
 
   const base = sharp(photoBuffer).resize(width, height, { fit: "cover", position: "attention" });

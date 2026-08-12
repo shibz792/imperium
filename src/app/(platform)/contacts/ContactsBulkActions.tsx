@@ -26,7 +26,7 @@ export type ContactExportRow = {
   agent: string;
 };
 
-const TYPES = ["OWNER", "BUYER", "TENANT", "BROKER", "DEVELOPER", "INVESTOR", "CORPORATE"];
+const TYPES = ["OWNER", "BUYER", "TENANT", "BROKER", "DEVELOPER", "INVESTOR", "CORPORATE", "OUTSOURCED"];
 
 export function ContactsBulkActions({ rows, agents, canDelete }: { rows: ContactExportRow[]; agents: { id: string; name: string }[]; canDelete: boolean }) {
   const { selected, clear } = useSelection();

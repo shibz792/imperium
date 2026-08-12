@@ -5,10 +5,11 @@ import { prisma } from "@/lib/prisma";
 import { requireRole, ADMIN_ROLES } from "@/lib/auth";
 import { logActivity } from "@/lib/audit";
 import { generateMarketingContent, CONTENT_TYPE_LABELS, type ContentType } from "@/lib/marketing";
-import { composeSocialImage, type SocialImageFormat } from "@/lib/marketingImage";
+import { composeSocialImage, brandGradientBackground, type SocialImageFormat } from "@/lib/marketingImage";
+import { generatePollinationsImage, enhancePropertyPhoto } from "@/lib/pollinations";
 import { streamPropertyPhoto } from "@/lib/google";
 import { relevantAskingPrice, priceUnit } from "@/lib/property";
-import { formatCurrency } from "@/lib/format";
+import { formatCurrency, titleCase } from "@/lib/format";
 import { scoreMatch } from "@/lib/match";
 import { sendWhatsAppMessage } from "@/lib/whatsapp";
 import { composeBrochure } from "@/lib/brochurePdf";
@@ -35,9 +36,11 @@ export async function generateAsset(propertyId: string, contentType: ContentType
 // parallel. Each still lands as its own row, reviewed/approved individually;
 // this only replaces the repetitive part of getting them made. A full
 // campaign means the two social tiles too, not just text — those are
-// composed automatically right after, silently skipped (not surfaced as an
-// error here) if the property has no usable photo yet; each row still has
-// its own manual "Generate image" retry in Recent generations.
+// composed automatically right after — using the listing's own photo, or a
+// labeled AI concept background if there isn't one yet (see
+// generateSocialImage) — with any remaining failure silently skipped, not
+// surfaced as an error here; each row still has its own manual "Generate
+// image" retry in Recent generations.
 export async function generateAllAssets(propertyId: string, language: "EN" | "SI" | "TA") {
   await requireRole(ADMIN_ROLES);
   const contentTypes = Object.keys(CONTENT_TYPE_LABELS) as ContentType[];
@@ -141,12 +144,32 @@ async function fetchSourcePhoto(url: string): Promise<Buffer | null> {
   return null; // relative paths that aren't the Drive proxy are static app assets, not property photos
 }
 
+// Best-effort scene description for the Pollinations fallback below — never
+// invents specifics (no bedroom count, no interior claims) since this isn't
+// describing the actual unit, just a generic, on-brand exterior mood shot
+// for a listing that has no photo of its own yet.
+function conceptImagePrompt(property: { subtype: string; city: string | null; district: string | null; transactionType: string }): string {
+  const kind = titleCase(property.subtype).toLowerCase();
+  const place = [property.city, property.district].filter(Boolean).join(", ") || "Sri Lanka";
+  return `professional real estate photography, exterior of a modern ${kind} in ${place}, golden hour lighting, architectural photography, wide angle, no people, no text, no watermark, high quality`;
+}
+
+// Pollinations' Kontext (image-to-image) model fetches the source image
+// itself from a URL — there's no raw-bytes upload on the free endpoint —
+// so the real photo's URL has to be publicly reachable, not a relative
+// app-internal path. A legacy direct-upload URL already is; the Drive
+// proxy path needs the app's own origin prefixed.
+function toAbsoluteMediaUrl(url: string): string {
+  if (/^https?:\/\//.test(url)) return url;
+  return `${appBaseUrl()}${url.startsWith("/") ? url : `/${url}`}`;
+}
+
 // Composes the tile and stores the PNG bytes directly on the row in
 // Postgres — deliberately not routed through Google Drive. Property photos
 // may still live there, but generating a postable image is core platform
 // functionality and shouldn't depend on an external account being
 // connected. See src/lib/marketingImage.ts for what actually gets drawn.
-export async function generateSocialImage(assetId: string): Promise<{ ok: true; imageUrl: string } | { ok: false; error: string }> {
+export async function generateSocialImage(assetId: string): Promise<{ ok: true; imageUrl: string; aiConcept?: boolean; aiEnhanced?: boolean } | { ok: false; error: string }> {
   const user = await requireRole(ADMIN_ROLES);
   const asset = await prisma.marketingAsset.findUniqueOrThrow({ where: { id: assetId }, include: { property: true } });
   if (asset.contentType !== "SOCIAL_1_1" && asset.contentType !== "STORY_9_16") {
@@ -157,33 +180,76 @@ export async function generateSocialImage(assetId: string): Promise<{ ok: true; 
     where: { propertyId: asset.propertyId, type: "PHOTO", url: { not: PLACEHOLDER_MEDIA_URL } },
     orderBy: { isCover: "desc" },
   });
-  if (candidates.length === 0) {
-    return { ok: false, error: "Add a property photo first — Media tab on the listing." };
-  }
 
   let photoBuffer: Buffer | null = null;
+  let sourceUrl: string | null = null;
   for (const candidate of candidates) {
     photoBuffer = await fetchSourcePhoto(candidate.url);
-    if (photoBuffer) break;
+    if (photoBuffer) {
+      sourceUrl = candidate.url;
+      break;
+    }
   }
+
+  const format0: SocialImageFormat = asset.contentType === "STORY_9_16" ? "9:16" : "1:1";
+  const dims0 = format0 === "9:16" ? { width: 1080, height: 1920 } : { width: 1080, height: 1080 };
+
+  // A real photo was found — try a subtle AI retouch (lighting/color/sky
+  // only, never altering the room itself) before it goes to compositing.
+  // Best-effort and silent: on any failure (offline dev server, Pollinations
+  // down, unreachable URL) the original, untouched photo is used instead —
+  // this must never block or degrade the tile just because the polish step
+  // didn't work.
+  let aiEnhanced = false;
+  if (photoBuffer && sourceUrl) {
+    const enhanced = await enhancePropertyPhoto(toAbsoluteMediaUrl(sourceUrl), dims0);
+    if (enhanced) {
+      photoBuffer = enhanced;
+      aiEnhanced = true;
+    }
+  }
+
+  // No real photo (either none uploaded, or Drive couldn't be reached) —
+  // fall back to a free, keyless AI-generated concept background rather
+  // than hard-failing. Always visibly labeled as a concept image, never
+  // presented as the real unit — see composeSocialImage's aiConcept badge.
+  let aiConcept = false;
   if (!photoBuffer) {
-    return { ok: false, error: "Could not load the property's photo. Try again shortly." };
+    photoBuffer = await generatePollinationsImage(conceptImagePrompt(asset.property), dims0);
+    aiConcept = photoBuffer !== null;
+  }
+  // Guaranteed last resort — a content piece should never fail to get an
+  // image just because a free, best-effort external service was slow or
+  // unreachable (this also keeps things working against a local dev server,
+  // where Pollinations' image-to-image step above can't reach back in, and
+  // covers the rare case where even the text-to-image call times out).
+  if (!photoBuffer) {
+    photoBuffer = await brandGradientBackground(format0);
   }
 
   const [headline, tagline] = asset.content.split("\n");
   const price = relevantAskingPrice(asset.property);
   const priceLine = price ? `${formatCurrency(price, asset.property.currency)}${priceUnit(asset.property)}` : "Price on request";
-  const format: SocialImageFormat = asset.contentType === "STORY_9_16" ? "9:16" : "1:1";
 
-  const png = await composeSocialImage(photoBuffer, { headline: headline ?? asset.property.title, tagline: tagline ?? "", priceLine, format });
+  const png = await composeSocialImage(photoBuffer, { headline: headline ?? asset.property.title, tagline: tagline ?? "", priceLine, format: format0, aiConcept, aiEnhanced });
 
   const imageUrl = `/api/marketing-image/${assetId}`;
   await prisma.marketingAsset.update({ where: { id: assetId }, data: { imageData: new Uint8Array(png), imageMimeType: "image/png", imageUrl } });
 
-  await logActivity({ entityType: "property", propertyId: asset.propertyId, type: "MARKETING_GENERATED", message: `${user.name} composed a ${format} social image.`, userId: user.id });
+  await logActivity({
+    entityType: "property",
+    propertyId: asset.propertyId,
+    type: "MARKETING_GENERATED",
+    message: aiConcept
+      ? `${user.name} composed a ${format0} social image using an AI-generated concept background (no property photo available yet).`
+      : aiEnhanced
+        ? `${user.name} composed a ${format0} social image using an AI-enhanced version of the listing photo.`
+        : `${user.name} composed a ${format0} social image.`,
+    userId: user.id,
+  });
   revalidatePath("/marketing-studio");
   revalidatePath(`/properties/${asset.propertyId}`);
-  return { ok: true, imageUrl };
+  return { ok: true, imageUrl, aiConcept, aiEnhanced };
 }
 
 // A real, multi-page PDF brochure — not just the BROCHURE content type's

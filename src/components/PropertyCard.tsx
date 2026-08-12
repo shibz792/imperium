@@ -3,7 +3,7 @@ import type { Property } from "@/generated/prisma/client";
 import { Badge } from "@/components/ui";
 import { LISTING_STATUS_TONE } from "@/lib/badges";
 import { formatCurrency, titleCase } from "@/lib/format";
-import { completenessScore, isStale, primarySize, priceUnit, relevantAskingPrice, whatsAppMessage } from "@/lib/property";
+import { completenessScore, isStale, primarySize, priceUnit, relevantAskingPrice, whatsAppMessage, thumbUrl } from "@/lib/property";
 import { ClickableCard } from "@/components/ClickableCard";
 import { CopyWhatsAppButton } from "@/components/CopyWhatsAppButton";
 import { ConfirmSubmitButton } from "@/components/ConfirmSubmitButton";
@@ -54,7 +54,7 @@ export function PropertyCard({
       <div className={`relative flex h-36 items-center justify-center ${cover ? "bg-ir-navy" : panelTone(property.id)}`}>
         {cover ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={cover} alt="" className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-[1.06]" />
+          <img src={thumbUrl(cover, 600)} alt="" className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-[1.06]" />
         ) : (
           <Icon size={34} strokeWidth={1} className="text-white/15 transition-transform duration-300 group-hover:scale-110" />
         )}

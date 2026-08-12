@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Sparkles, Layers, Copy, Check, Loader2, ImagePlus, Download, Rocket } from "lucide-react";
+import { Sparkles, Layers, Copy, Check, Loader2, ImagePlus, Download, Rocket, Wand2 } from "lucide-react";
 import { generateAsset, generateAllAssets, generateSocialImage, propertiesNeedingCampaign } from "./actions";
 import { CONTENT_TYPE_LABELS, type ContentType } from "@/lib/marketing";
 
@@ -22,7 +22,7 @@ export function MarketingStudioClient({ properties, groqEnabled }: { properties:
   const [pending, startTransition] = useTransition();
   const [batchPending, startBatchTransition] = useTransition();
   const [batchDone, setBatchDone] = useState<number | null>(null);
-  const [imageState, setImageState] = useState<{ status: "idle" | "loading" | "done" | "error"; url?: string; error?: string }>({ status: "idle" });
+  const [imageState, setImageState] = useState<{ status: "idle" | "loading" | "done" | "error"; url?: string; error?: string; aiConcept?: boolean; aiEnhanced?: boolean }>({ status: "idle" });
   const [portfolio, setPortfolio] = useState<{ status: "idle" | "running" | "done"; done: number; total: number; current?: string }>({ status: "idle", done: 0, total: 0 });
   const router = useRouter();
   const isSocial = SOCIAL_TYPES.includes(contentType);
@@ -57,7 +57,7 @@ export function MarketingStudioClient({ properties, groqEnabled }: { properties:
       if (SOCIAL_TYPES.includes(asset.contentType as ContentType)) {
         setImageState({ status: "loading" });
         const img = await generateSocialImage(asset.id);
-        setImageState(img.ok ? { status: "done", url: img.imageUrl } : { status: "error", error: img.error });
+        setImageState(img.ok ? { status: "done", url: img.imageUrl, aiConcept: img.aiConcept, aiEnhanced: img.aiEnhanced } : { status: "error", error: img.error });
       }
     });
   }
@@ -67,7 +67,7 @@ export function MarketingStudioClient({ properties, groqEnabled }: { properties:
     setImageState({ status: "loading" });
     startTransition(async () => {
       const img = await generateSocialImage(result.id);
-      setImageState(img.ok ? { status: "done", url: img.imageUrl } : { status: "error", error: img.error });
+      setImageState(img.ok ? { status: "done", url: img.imageUrl, aiConcept: img.aiConcept } : { status: "error", error: img.error });
     });
   }
 
@@ -159,7 +159,7 @@ export function MarketingStudioClient({ properties, groqEnabled }: { properties:
             <div className="mt-4 border-t border-black/8 pt-3">
               {imageState.status === "loading" && (
                 <div className="flex items-center gap-2 text-xs text-black/40">
-                  <Loader2 size={13} className="animate-spin" /> Composing the image tile from the listing photo…
+                  <Loader2 size={13} className="animate-spin" /> Composing the image tile — retouching the listing photo if there is one, otherwise a free AI-generated concept background…
                 </div>
               )}
               {imageState.status === "error" && (
@@ -182,12 +182,27 @@ export function MarketingStudioClient({ properties, groqEnabled }: { properties:
                   />
                   <div className="flex flex-col gap-2">
                     <span className="ir-label">Image tile ready</span>
+                    {imageState.aiConcept && (
+                      <span className="flex w-fit items-center gap-1 rounded-full bg-[color:var(--color-brick-tint)] px-2 py-0.5 text-[0.65rem] font-medium text-[color:var(--color-brick)]">
+                        <Wand2 size={11} /> AI concept background — no listing photo yet
+                      </span>
+                    )}
+                    {imageState.aiEnhanced && (
+                      <span className="flex w-fit items-center gap-1 rounded-full bg-ir-navy/10 px-2 py-0.5 text-[0.65rem] font-medium text-ir-navy">
+                        <Wand2 size={11} /> Listing photo, AI-retouched (lighting/color only)
+                      </span>
+                    )}
                     <a href={imageState.url} download={`${result.id}.png`} className="ir-btn ir-btn-ghost !py-1 !text-xs w-fit">
                       <Download size={12} /> Download
                     </a>
                     <button onClick={retryImage} className="flex w-fit items-center gap-1 text-xs text-black/40 hover:text-ir-navy">
                       <ImagePlus size={12} /> Regenerate image
                     </button>
+                    {imageState.aiConcept && (
+                      <Link href={`/properties/${propertyId}`} className="text-[0.65rem] text-black/40 underline hover:text-ir-navy">
+                        Add a real photo to replace it →
+                      </Link>
+                    )}
                   </div>
                 </div>
               )}

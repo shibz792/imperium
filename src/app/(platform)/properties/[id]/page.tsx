@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Pencil, ShieldCheck, ExternalLink, Trash2, Star, CheckCircle2, Circle } from "lucide-react";
+import { Pencil, ShieldCheck, ExternalLink, Trash2, CheckCircle2, Circle } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireRole, canSeeConfidential, isAdmin } from "@/lib/auth";
 import { ALL_INTERNAL_ROLES } from "@/lib/roles";
@@ -11,8 +11,9 @@ import { LISTING_STATUS_TONE, LEGAL_STATUS_TONE, DEAL_STAGE_TONE, VIEWING_STATUS
 import { formatCurrency, formatDate, formatDateTime, titleCase, daysAgo } from "@/lib/format";
 import { completenessScore, isStale, primarySize, relevantAskingPrice, clientPrice, priceUnit, whatsAppMessage } from "@/lib/property";
 import { scoreMatch, explainMatch } from "@/lib/match";
-import { verifyProperty, changeListingStatus, setCoverPhoto, deletePropertyMedia, importPhotosFromDrive, deleteProperty, createSharePage, deleteSharePage } from "../actions";
+import { verifyProperty, changeListingStatus, importPhotosFromDrive, deleteProperty, createSharePage, deleteSharePage } from "../actions";
 import { PropertyPhotoUploader } from "../PropertyPhotoUploader";
+import { PropertyMediaGrid } from "../PropertyMediaGrid";
 import { GoogleDriveBrowser } from "@/components/GoogleDriveBrowser";
 import { createNote, deleteNote } from "../../notes/actions";
 import { createTask, setTaskStatus, deleteTask } from "../../tasks/actions";
@@ -52,7 +53,7 @@ export default async function PropertyDetailPage({ params, searchParams }: { par
       owner: true,
       assignedAgent: true,
       collaborators: true,
-      media: { orderBy: [{ isCover: "desc" }, { createdAt: "asc" }] },
+      media: { orderBy: [{ isCover: "desc" }, { order: "asc" }, { createdAt: "asc" }] },
       documents: true,
       marketingAssets: { include: { approvedBy: true }, orderBy: { createdAt: "desc" } },
       sharePages: true,
@@ -264,45 +265,14 @@ export default async function PropertyDetailPage({ params, searchParams }: { par
 
       {tab === "media" && (
         <SectionCard title={`Media (${property.media.length})`}>
-          <PropertyPhotoUploader propertyId={id} />
+          <PropertyPhotoUploader propertyId={id} hasExistingPhotos={property.media.length > 0} />
           <div className="-mt-2 mb-4 flex justify-end">
             <GoogleDriveBrowser filter="image" label="Import photos from Drive" onImport={importPhotosFromDrive.bind(null, id)} />
           </div>
           {property.media.length === 0 ? (
             <EmptyState title="No photos yet" description="Drop a few in above — the first one becomes the cover photo shown on cards and listings automatically." />
           ) : (
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-              {property.media.map((m) => (
-                <div key={m.id} className="relative">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={m.url} alt={m.caption ?? ""} className="aspect-video w-full rounded border border-black/8 bg-ir-ivory object-cover" />
-                  {m.isCover && (
-                    <span className="absolute left-2 top-2 flex items-center gap-1 rounded-full bg-ir-gold px-2 py-0.5 text-[0.65rem] font-semibold text-ir-navy">
-                      <Star size={10} className="fill-current" /> Cover
-                    </span>
-                  )}
-                  {/* Always visible, not hover-only — hover reveals don't
-                      exist on touch devices, which made these unreachable
-                      on phone/tablet. */}
-                  <div className="absolute inset-x-0 bottom-0 flex items-center justify-end gap-1.5 rounded-b bg-gradient-to-t from-black/70 to-transparent p-2 pt-5">
-                    {!m.isCover && (
-                      <form action={setCoverPhoto.bind(null, id, m.id)}>
-                        <button type="submit" title="Set as cover photo" className="flex h-7 w-7 items-center justify-center rounded-full bg-black/40 text-white hover:bg-black/60">
-                          <Star size={13} />
-                        </button>
-                      </form>
-                    )}
-                    {isAdmin(user) && (
-                      <form action={deletePropertyMedia.bind(null, id, m.id)}>
-                        <ConfirmSubmitButton confirmMessage="Delete this photo? It'll be moved to the Drive trash, but removed from here immediately." title="Delete photo" className="flex h-7 w-7 items-center justify-center rounded-full bg-black/40 text-white hover:bg-[color:var(--color-brick)]">
-                          <Trash2 size={13} />
-                        </ConfirmSubmitButton>
-                      </form>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
+            <PropertyMediaGrid propertyId={id} media={property.media} canDelete={isAdmin(user)} />
           )}
         </SectionCard>
       )}

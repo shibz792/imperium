@@ -37,8 +37,8 @@ export function ContactForm({
         <PhoneField name="phone" label="Phone / WhatsApp number" required defaultValue={initial?.phone as string} />
         <Field label="Type">
           <select name="contactType" value={contactType} onChange={(e) => setContactType(e.target.value)} className="ir-select">
-            {["OWNER", "BUYER", "TENANT", "BROKER", "DEVELOPER", "INVESTOR", "CORPORATE"].map((t) => (
-              <option key={t} value={t}>{t === "BROKER" ? "Broker / Agency" : titleCase(t)}</option>
+            {["OWNER", "BUYER", "TENANT", "BROKER", "DEVELOPER", "INVESTOR", "CORPORATE", "OUTSOURCED"].map((t) => (
+              <option key={t} value={t}>{t === "BROKER" ? "Broker / Agency" : t === "OUTSOURCED" ? "Outsourced (sourced listing contact)" : titleCase(t)}</option>
             ))}
           </select>
         </Field>

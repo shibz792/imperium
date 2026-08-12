@@ -219,10 +219,25 @@ export async function changeListingStatus(id: string, status: string) {
 // automatically its cover.
 // ---------------------------------------------------------------------------
 
-export async function uploadPropertyPhotos(propertyId: string, formData: FormData): Promise<{ ok: boolean; error?: string }> {
+export type UploadPhotoResult = { ok: true; media: { id: string; url: string; isCover: boolean } } | { ok: false; error: string };
+
+// One file per call, not a batch — the uploader component runs a small
+// concurrency pool of these in parallel and tracks each file's own
+// progress/error individually, rather than one opaque "3/12 uploading"
+// line with a single joined error at the end.
+//
+// `asCover` is decided by the *client*, not computed here from "is this
+// the first photo" — if every file in a batch independently queried
+// existingCount, several parallel uploads to a brand-new property could
+// all see zero and all claim to be the cover. The client already knows
+// whether the gallery was empty when the batch started, and only ever
+// marks the very first file of such a batch as asCover, so at most one
+// upload per batch ever sets this.
+export async function uploadPropertyPhoto(propertyId: string, formData: FormData): Promise<UploadPhotoResult> {
   const user = await requireUser();
-  const files = formData.getAll("files").filter((f): f is File => f instanceof File && f.size > 0);
-  if (files.length === 0) return { ok: true };
+  const file = formData.get("file");
+  if (!(file instanceof File) || file.size === 0) return { ok: false, error: "No file provided." };
+  const asCover = formData.get("asCover") === "true";
 
   const property = await prisma.property.findUnique({ where: { id: propertyId }, select: { propertyRef: true, title: true } });
   if (!property) return { ok: false, error: "Property not found." };
@@ -230,33 +245,65 @@ export async function uploadPropertyPhotos(propertyId: string, formData: FormDat
   const folderId = await ensurePropertyDriveFolder(propertyId, property.propertyRef, property.title);
   if (!folderId) return { ok: false, error: (await storageAccountIssue()) ?? "Could not access Drive storage — try again shortly." };
 
-  const existingCount = await prisma.propertyMedia.count({ where: { propertyId } });
-  let uploaded = 0;
-  for (const file of files) {
-    const buffer = Buffer.from(await file.arrayBuffer());
-    const fileId = await uploadToPropertyFolder(folderId, buffer, file.name, file.type || "image/jpeg");
-    if (!fileId) continue;
-    await prisma.propertyMedia.create({
-      data: { propertyId, url: `/api/drive-media/${fileId}`, driveFileId: fileId, type: "PHOTO", isCover: existingCount === 0 && uploaded === 0 },
-    });
-    uploaded++;
-  }
-  if (uploaded === 0) return { ok: false, error: "Upload to Drive failed — try again." };
+  const buffer = Buffer.from(await file.arrayBuffer());
+  const uploadResult = await uploadToPropertyFolder(folderId, buffer, file.name, file.type || "image/jpeg");
+  if (!uploadResult.ok) return { ok: false, error: uploadResult.error };
 
-  await logActivity({ entityType: "property", propertyId, type: "MEDIA_UPLOADED", message: `${user.name} added ${uploaded} photo${uploaded === 1 ? "" : "s"}.`, userId: user.id });
+  // Concurrent uploads can race on this max — worst case two new photos
+  // briefly tie on `order`, a cosmetic wrinkle fixed by the next drag-
+  // reorder, not a correctness problem worth locking for.
+  const maxOrder = await prisma.propertyMedia.aggregate({ where: { propertyId }, _max: { order: true } });
+  const media = await prisma.$transaction(async (tx) => {
+    if (asCover) await tx.propertyMedia.updateMany({ where: { propertyId }, data: { isCover: false } });
+    return tx.propertyMedia.create({
+      data: {
+        propertyId,
+        url: `/api/drive-media/${uploadResult.fileId}`,
+        driveFileId: uploadResult.fileId,
+        type: "PHOTO",
+        isCover: asCover,
+        order: (maxOrder._max.order ?? -1) + 1,
+      },
+    });
+  });
+
+  await logActivity({ entityType: "property", propertyId, type: "MEDIA_UPLOADED", message: `${user.name} added a photo.`, userId: user.id });
+  revalidatePath(`/properties/${propertyId}`);
+  revalidatePath("/properties");
+  return { ok: true, media: { id: media.id, url: media.url, isCover: media.isCover } };
+}
+
+export async function setCoverPhoto(propertyId: string, mediaId: string): Promise<{ ok: boolean }> {
+  await requireUser();
+  try {
+    await prisma.$transaction([
+      prisma.propertyMedia.updateMany({ where: { propertyId }, data: { isCover: false } }),
+      prisma.propertyMedia.update({ where: { id: mediaId }, data: { isCover: true } }),
+    ]);
+  } catch {
+    return { ok: false };
+  }
   revalidatePath(`/properties/${propertyId}`);
   revalidatePath("/properties");
   return { ok: true };
 }
 
-export async function setCoverPhoto(propertyId: string, mediaId: string) {
+// Manual gallery arrangement — the cover photo still always renders first
+// regardless of its own `order` value (see the orderBy everywhere this
+// model is queried), this only controls the rest. Filters the incoming id
+// list down to ids that actually belong to this property first, so a
+// tampered request can't reorder (or learn the existence of) another
+// property's media.
+export async function reorderPropertyMedia(propertyId: string, orderedMediaIds: string[]): Promise<{ ok: boolean }> {
   await requireUser();
-  await prisma.$transaction([
-    prisma.propertyMedia.updateMany({ where: { propertyId }, data: { isCover: false } }),
-    prisma.propertyMedia.update({ where: { id: mediaId }, data: { isCover: true } }),
-  ]);
+  const owned = await prisma.propertyMedia.findMany({ where: { propertyId, id: { in: orderedMediaIds } }, select: { id: true } });
+  const ownedIds = new Set(owned.map((m) => m.id));
+  const safeIds = orderedMediaIds.filter((id) => ownedIds.has(id));
+  if (safeIds.length === 0) return { ok: false };
+
+  await prisma.$transaction(safeIds.map((id, index) => prisma.propertyMedia.update({ where: { id }, data: { order: index } })));
   revalidatePath(`/properties/${propertyId}`);
-  revalidatePath("/properties");
+  return { ok: true };
 }
 
 export async function deletePropertyMedia(propertyId: string, mediaId: string) {
@@ -269,7 +316,7 @@ export async function deletePropertyMedia(propertyId: string, mediaId: string) {
   if (media.driveFileId) await trashDriveFile(media.driveFileId).catch(() => {});
 
   if (media.isCover) {
-    const next = await prisma.propertyMedia.findFirst({ where: { propertyId }, orderBy: { createdAt: "asc" } });
+    const next = await prisma.propertyMedia.findFirst({ where: { propertyId }, orderBy: [{ order: "asc" }, { createdAt: "asc" }] });
     if (next) await prisma.propertyMedia.update({ where: { id: next.id }, data: { isCover: true } });
   }
   revalidatePath(`/properties/${propertyId}`);
@@ -287,18 +334,25 @@ export async function importPhotosFromDrive(propertyId: string, fileIds: string[
   if (!folderId) return { ok: false, error: (await storageAccountIssue()) ?? "Could not access Drive storage — try again shortly." };
 
   const existingCount = await prisma.propertyMedia.count({ where: { propertyId } });
+  const maxOrder = await prisma.propertyMedia.aggregate({ where: { propertyId }, _max: { order: true } });
+  let nextOrder = (maxOrder._max.order ?? -1) + 1;
   let imported = 0;
+  // Sequential, not parallel — one Drive download + re-upload round trip
+  // per file, same "loop, not batch" shape as before; safe to compute
+  // isCover/order incrementally here since nothing else writes concurrently
+  // within a single action invocation.
   for (const fileId of fileIds) {
     // Downloaded using the browsing user's own Drive connection (wherever
     // the file actually lives), then re-uploaded into the storage
     // account's property folder — the two can be different accounts.
     const file = await downloadDriveFile(user.id, fileId);
     if (!file || !file.mimeType.startsWith("image/")) continue;
-    const newFileId = await uploadToPropertyFolder(folderId, file.buffer, file.name, file.mimeType);
-    if (!newFileId) continue;
+    const uploadResult = await uploadToPropertyFolder(folderId, file.buffer, file.name, file.mimeType);
+    if (!uploadResult.ok) continue;
     await prisma.propertyMedia.create({
-      data: { propertyId, url: `/api/drive-media/${newFileId}`, driveFileId: newFileId, type: "PHOTO", isCover: existingCount === 0 && imported === 0 },
+      data: { propertyId, url: `/api/drive-media/${uploadResult.fileId}`, driveFileId: uploadResult.fileId, type: "PHOTO", isCover: existingCount === 0 && imported === 0, order: nextOrder },
     });
+    nextOrder++;
     imported++;
   }
 

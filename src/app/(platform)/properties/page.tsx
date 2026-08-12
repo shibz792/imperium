@@ -6,7 +6,7 @@ import { ALL_INTERNAL_ROLES } from "@/lib/roles";
 import { PageHeader, Badge, EmptyState } from "@/components/ui";
 import { LISTING_STATUS_TONE } from "@/lib/badges";
 import { formatCurrency, formatDate, titleCase, daysAgoDate } from "@/lib/format";
-import { completenessScore, isStale, primarySize, relevantAskingPrice, priceUnit, whatsAppMessage } from "@/lib/property";
+import { completenessScore, isStale, primarySize, relevantAskingPrice, priceUnit, whatsAppMessage, thumbUrl } from "@/lib/property";
 import { ALL_DISTRICTS, PROPERTY_SUBTYPES } from "@/lib/locations";
 import { PropertyCard } from "@/components/PropertyCard";
 import { ClickableRow } from "@/components/ClickableRow";
@@ -210,7 +210,7 @@ export default async function PropertiesPage({ searchParams }: { searchParams: P
                       <div className="flex items-center gap-2.5">
                         {p.media[0] ? (
                           // eslint-disable-next-line @next/next/no-img-element
-                          <img src={p.media[0].url} alt="" className="h-9 w-12 shrink-0 rounded object-cover" />
+                          <img src={thumbUrl(p.media[0].url, 96)} alt="" className="h-9 w-12 shrink-0 rounded object-cover" />
                         ) : (
                           <div className="h-9 w-12 shrink-0 rounded bg-ir-navy/90" />
                         )}
