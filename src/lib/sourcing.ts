@@ -8,19 +8,20 @@ import { districtForCity } from "./locations";
 // site. That's the difference between "an agent uses the site the way a
 // browser would" and building a harvester — the latter risks the sites'
 // Terms of Service and getting the agency's IP blocked, and isn't
-// something to build silently. Selectors below were verified against the
-// live sites, not guessed.
+// something to build silently. Selectors and URL routing below were
+// reverse-engineered against the live sites (fetching real category trees,
+// real internal cross-links, real filter counts), not guessed — see the
+// category-routing tables further down for what was actually verified.
 
 const UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36";
 const ALLOWED_HOSTS = ["ikman.lk", "www.ikman.lk", "lankapropertyweb.com", "www.lankapropertyweb.com"];
 
-async function fetchHtml(url: string, timeoutMs = 12000): Promise<string> {
+async function fetchHtml(url: string, timeoutMs = 12000): Promise<{ html: string; ok: boolean; status: number }> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const res = await fetch(url, { headers: { "User-Agent": UA }, signal: controller.signal, cache: "no-store" });
-    if (!res.ok) throw new Error(`Fetch failed: ${res.status}`);
-    return await res.text();
+    return { html: res.ok ? await res.text() : "", ok: res.ok, status: res.status };
   } finally {
     clearTimeout(timer);
   }
@@ -49,20 +50,32 @@ export type SourcingResult = {
   // fields, so these are never authoritative, only good enough to filter
   // and display a badge with. See parseBedroomsFromTitle/parsePriceToNumber.
   bedrooms?: number;
+  // Ground-truth structured fields, populated only for ikman (its search
+  // JSON carries them directly — see searchIkman). When present, applyFilters
+  // trusts these over any text guess; when absent (LankaPropertyWeb), the
+  // URL routing chosen in buildLpwSearchUrl is what carries the accuracy
+  // instead, since there's no per-result structured field to fall back on.
+  category?: string;
+  adType?: "for_sale" | "to_buy" | "for_rent" | "to_rent";
 };
 
 // ---------------------------------------------------------------------------
-// Filtering — both sites' own search only reliably narrows by keyword
-// (LankaPropertyWeb also genuinely scopes district/property-type via its
-// URL path; ikman's search endpoint does not reliably do either from a
-// query string). Real accuracy comes from filtering the results we already
-// parsed, in our own code, against fields we already have — not from
-// guessing undocumented site query parameters.
+// Filtering — real accuracy comes from two layers, not one: (1) requesting
+// the most precisely-scoped URL each site actually supports (see the
+// category-routing tables below — this is the fix for "pulling everything",
+// most of which came from ikman's search being hit with only a free-text
+// query against a broad umbrella category, no district/type/deal-type
+// scoping in the request at all), and (2) filtering the results we already
+// parsed, in our own code, against fields we already have, as a safety net
+// for whatever the URL alone can't guarantee (e.g. LankaPropertyWeb has no
+// per-district URL outside Colombo — see buildLpwSearchUrl).
 // ---------------------------------------------------------------------------
 
 export type SourcingFilters = {
   district?: string;
   propertyType?: string;
+  dealType?: "BUY" | "RENT" | "LEASE";
+  keyword?: string;
   priceMin?: number;
   priceMax?: number;
   bedrooms?: number;
@@ -136,12 +149,56 @@ function locationMatchesDistrict(location: string | undefined, district: string)
   return tokens.some((t) => districtForCity(t) === district);
 }
 
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+// Fixes a real, confirmed bug: a plain substring check for propertyType
+// "House" matched "Warehouse" too (it's a literal substring of it), which
+// meant selecting "House" quietly let every warehouse listing through —
+// exactly the "search pulls everything" complaint. Word-boundary matching
+// against each significant word in the (possibly multi-word, internal-only)
+// property type label fixes that class of false positive, while still
+// matching a phrase like "Retail Space" against a title that only says one
+// of the two words (real listing titles rarely use this app's own category
+// vocabulary verbatim).
+function propertyTypeMatches(hay: string, propertyType: string): boolean {
+  const words = propertyType.toLowerCase().split(/\s+/).filter((w) => w.length > 2);
+  if (words.length === 0) return true;
+  return words.some((w) => new RegExp(`\\b${escapeRegex(w)}\\b`, "i").test(hay));
+}
+
+const SALE_AD_TYPES = new Set(["for_sale", "to_buy"]);
+const RENT_AD_TYPES = new Set(["for_rent", "to_rent"]);
+
 export function applyFilters(results: SourcingResult[], filters: SourcingFilters): SourcingResult[] {
   return results.filter((r) => {
+    // Ground-truth field when we have it (ikman) — this is what actually
+    // catches ikman's own free-text search mixing sale + rental ads
+    // together when no specific category could be requested (propertyType
+    // left as "Any"). LankaPropertyWeb never leaks the wrong deal type in
+    // the first place, since buildLpwSearchUrl picks the sale/rental path
+    // directly, so it never sets adType at all — nothing to check here.
+    if (filters.dealType && r.adType) {
+      const wantSale = filters.dealType === "BUY";
+      if (wantSale && !SALE_AD_TYPES.has(r.adType)) return false;
+      if (!wantSale && !RENT_AD_TYPES.has(r.adType)) return false;
+    }
     if (filters.district && !locationMatchesDistrict(r.location, filters.district)) return false;
     if (filters.propertyType) {
       const hay = `${r.location ?? ""} ${r.title}`.toLowerCase();
-      if (!hay.includes(filters.propertyType.toLowerCase())) return false;
+      if (!propertyTypeMatches(hay, filters.propertyType)) return false;
+    }
+    // LankaPropertyWeb has no keyword query param that actually narrows
+    // results (verified live — it silently ignores ?q=/?search=), so a
+    // typed keyword was previously dropped entirely for that source. Only
+    // applied to LPW: ikman's own query param already does a full-text
+    // search across each ad's full description, not just its title —
+    // re-checking title-only text here would wrongly drop a real ikman
+    // match whose keyword hit only appeared in its description.
+    if (filters.keyword?.trim() && r.source === "lankapropertyweb") {
+      const hay = `${r.title} ${r.location ?? ""}`.toLowerCase();
+      if (!hay.includes(filters.keyword.trim().toLowerCase())) return false;
     }
     if (filters.priceMin != null || filters.priceMax != null) {
       const price = parsePriceToNumber(r.price);
@@ -165,8 +222,17 @@ export function applyFilters(results: SourcingResult[], filters: SourcingFilters
 
 // ---------------------------------------------------------------------------
 // ikman.lk — search results embed a clean JSON state blob
-// (`window.initialData…serp.ads.data.ads[]`), which is far more reliable
-// than parsing the hashed CSS-module class names in the DOM.
+// (`window.initialData…serp.ads.data.ads[]`), far more reliable than
+// parsing hashed CSS-module class names. The bigger fix lives in the URL
+// itself, though: ikman.lk/en/ads/{location-slug}/{category-slug} is a real,
+// separately-indexed page per district+category+deal-type combination —
+// confirmed by fetching ikman's own category tree (`serp.categories`) and
+// cross-checking against its internal "browse by location" links, not
+// guessed. The old code only ever hit the generic
+// /en/ads/sri-lanka/property?query=... endpoint, which mixes every
+// district, every property type, and — this was the biggest single source
+// of "pulling everything" — every deal type (sale AND rental) into one
+// fuzzy full-text search ikman itself doesn't scope tightly.
 // ---------------------------------------------------------------------------
 
 function extractJsAssignment(html: string, marker: string): unknown | null {
@@ -207,61 +273,201 @@ function extractJsAssignment(html: string, marker: string): unknown | null {
   }
 }
 
-export function buildIkmanSearchUrl(query: string) {
-  return `https://ikman.lk/en/ads/sri-lanka/property?query=${encodeURIComponent(query)}`;
+// Every internal-only property subtype this app has, mapped to ikman's own
+// (much coarser) category slugs — verified against ikman's live category
+// tree, not guessed. ikman has no distinct category for most of this app's
+// industrial/land nuance (a "Distribution Centre" or "Yard" isn't a real
+// ikman category), so those fall back to the closest real bucket
+// (Commercial Property) rather than a made-up slug that would 404.
+const IKMAN_CATEGORY_BY_SUBTYPE: Record<string, { sale: string; rent: string }> = {
+  House: { sale: "houses-for-sale", rent: "house-rentals" },
+  Villa: { sale: "houses-for-sale", rent: "house-rentals" },
+  "Luxury Residence": { sale: "houses-for-sale", rent: "house-rentals" },
+  "Gated Community Home": { sale: "houses-for-sale", rent: "house-rentals" },
+  "Development Project": { sale: "houses-for-sale", rent: "house-rentals" },
+  "Holiday Home": { sale: "houses-for-sale", rent: "holiday-short-term-rental" },
+  Apartment: { sale: "apartments-for-sale", rent: "apartment-rentals" },
+  // ikman has no "sell an annexe/room" category — House is the closest
+  // real sale bucket; the rental side has a dedicated category, used as-is.
+  Annexe: { sale: "houses-for-sale", rent: "room-annex-rentals" },
+  Room: { sale: "houses-for-sale", rent: "room-annex-rentals" },
+  Office: { sale: "commercial-properties-for-sale", rent: "commercial-property-rentals" },
+  "Retail Space": { sale: "commercial-properties-for-sale", rent: "commercial-property-rentals" },
+  "Commercial Building": { sale: "commercial-properties-for-sale", rent: "commercial-property-rentals" },
+  Showroom: { sale: "commercial-properties-for-sale", rent: "commercial-property-rentals" },
+  Restaurant: { sale: "commercial-properties-for-sale", rent: "commercial-property-rentals" },
+  Hotel: { sale: "commercial-properties-for-sale", rent: "commercial-property-rentals" },
+  Guesthouse: { sale: "commercial-properties-for-sale", rent: "commercial-property-rentals" },
+  "Mixed-Use Development": { sale: "commercial-properties-for-sale", rent: "commercial-property-rentals" },
+  Warehouse: { sale: "commercial-properties-for-sale", rent: "commercial-property-rentals" },
+  Factory: { sale: "commercial-properties-for-sale", rent: "commercial-property-rentals" },
+  "Cold Storage Facility": { sale: "commercial-properties-for-sale", rent: "commercial-property-rentals" },
+  "Distribution Centre": { sale: "commercial-properties-for-sale", rent: "commercial-property-rentals" },
+  Yard: { sale: "commercial-properties-for-sale", rent: "commercial-property-rentals" },
+  "Logistics Facility": { sale: "commercial-properties-for-sale", rent: "commercial-property-rentals" },
+  "Industrial Land": { sale: "land-for-sale", rent: "land-for-rent" },
+  "Residential Land": { sale: "land-for-sale", rent: "land-for-rent" },
+  "Commercial Land": { sale: "land-for-sale", rent: "land-for-rent" },
+  "Agricultural Land": { sale: "land-for-sale", rent: "land-for-rent" },
+  Estate: { sale: "land-for-sale", rent: "land-for-rent" },
+  Plantation: { sale: "land-for-sale", rent: "land-for-rent" },
+  "Development Land": { sale: "land-for-sale", rent: "land-for-rent" },
+};
+
+// ikman's location slugs are simply the district name, lowercased and
+// space-hyphenated ("Nuwara Eliya" → "nuwara-eliya") — verified against
+// every district this app offers, including the multi-word one.
+function ikmanLocationSlug(district: string): string {
+  return district.toLowerCase().replace(/\s+/g, "-");
 }
 
-export async function searchIkman(query: string): Promise<SourcingResult[]> {
-  const html = await fetchHtml(buildIkmanSearchUrl(query));
+export function buildIkmanSearchUrl(opts: { dealType: "BUY" | "RENT" | "LEASE"; district?: string; propertyType?: string; keyword?: string }): string {
+  const locationSlug = opts.district ? ikmanLocationSlug(opts.district) : "sri-lanka";
+  const cat = opts.propertyType ? IKMAN_CATEGORY_BY_SUBTYPE[opts.propertyType] : undefined;
+  // "property" is the live (non-deactivated) umbrella category — every
+  // subtype and deal type mixed together. Only reached when the user left
+  // property type as "Any"; applyFilters' adType check is the safety net
+  // for deal-type accuracy in that one case, since no URL segment can
+  // narrow an umbrella category by sale-vs-rent on its own.
+  const categorySlug = cat ? (opts.dealType === "BUY" ? cat.sale : cat.rent) : "property";
+  const query = opts.keyword?.trim() ? `?query=${encodeURIComponent(opts.keyword.trim())}` : "";
+  return `https://ikman.lk/en/ads/${locationSlug}/${categorySlug}${query}`;
+}
+
+function mapIkmanAd(ad: Record<string, unknown>): SourcingResult {
+  const title = String(ad.title ?? "");
+  const category = ad.category as { name?: string } | undefined;
+  return {
+    source: "ikman" as const,
+    title,
+    price: ad.price ? String(ad.price) : undefined,
+    location: [ad.location, category?.name].filter(Boolean).join(" · ") || undefined,
+    size: ad.details ? String(ad.details) : undefined,
+    url: `https://ikman.lk/en/ad/${ad.slug}`,
+    imgUrl: ad.imgUrl ? String(ad.imgUrl) : undefined,
+    postedAgo: ad.timeStamp ? String(ad.timeStamp) : undefined,
+    bedrooms: parseBedroomsFromTitle(title),
+    category: category?.name,
+    adType: ad.adType as SourcingResult["adType"],
+  };
+}
+
+export async function searchIkman(opts: { dealType: "BUY" | "RENT" | "LEASE"; district?: string; propertyType?: string; keyword?: string }): Promise<SourcingResult[]> {
+  const url = buildIkmanSearchUrl(opts);
+  let { html, ok } = await fetchHtml(url);
+
+  // A location/category combination that turns out not to exist (rare —
+  // every district+category this app can produce was checked, but a future
+  // district added to locations.ts wouldn't be) falls back to a
+  // sri-lanka-wide search on the same category rather than surfacing a
+  // dead end; applyFilters' district check still guards accuracy from there.
+  if (!ok && opts.district) {
+    ({ html, ok } = await fetchHtml(buildIkmanSearchUrl({ ...opts, district: undefined })));
+  }
+  if (!ok) throw new Error(`ikman.lk search failed (page not found or unreachable).`);
+
   const data = extractJsAssignment(html, "window.initialData = ") as
     | { serp?: { ads?: { data?: { ads?: Array<Record<string, unknown>> } } } }
     | null;
   const ads = data?.serp?.ads?.data?.ads ?? [];
-  return ads.slice(0, 20).map((ad) => {
-    const title = String(ad.title ?? "");
-    return {
-      source: "ikman" as const,
-      title,
-      price: ad.price ? String(ad.price) : undefined,
-      location: [ad.location, (ad.category as { name?: string } | undefined)?.name].filter(Boolean).join(" · ") || undefined,
-      size: ad.details ? String(ad.details) : undefined,
-      url: `https://ikman.lk/en/ad/${ad.slug}`,
-      imgUrl: ad.imgUrl ? String(ad.imgUrl) : undefined,
-      postedAgo: ad.timeStamp ? String(ad.timeStamp) : undefined,
-      bedrooms: parseBedroomsFromTitle(title),
-    };
-  });
+  return ads.slice(0, 30).map(mapIkmanAd);
 }
 
 // ---------------------------------------------------------------------------
 // LankaPropertyWeb — plain server-rendered HTML with stable semantic class
 // names (no CSS-module hashing), so a real DOM parse (cheerio) works well.
+//
+// The site actually has THREE separate URL namespaces, not one — found by
+// crawling its own internal cross-links rather than guessing:
+//   /forsale-{location}-{Type}.html + /rentals/lease-{location}-{Type}.html
+//     — the general case (House, Apartment, Villa, Bungalow, Studio, and a
+//     coarse "Commercial" bucket that covers everything commercial/
+//     industrial except the two below).
+//   /land/sale-{location}-all.html
+//     — ALL land listings live here, completely separately from /forsale/.
+//     The old code pointed land at /forsale-{loc}-Bare+land.html, which
+//     silently returned zero results — land was effectively unsearchable.
+//   /sale/commercial/{subtype}/ + /rentals/commercial/{subtype}/
+//     — warehouse and factory specifically get their own indexed pages
+//     here; the old code mapped Warehouse to /forsale-{loc}-Warehouse.html,
+//     which 404s (confirmed live) — every warehouse search was a hard
+//     failure, not just an inaccurate one.
+//
+// Location scoping only genuinely works for the district "Colombo" — its
+// "{District}+All_0" form is a real, verified shortcut. Every other
+// district's "{Province}_All_0" form was tested live and silently resolves
+// to the *entire country* regardless of which province is given (confirmed
+// by requesting five different provinces and getting the identical count
+// back each time) — LankaPropertyWeb simply has no working district-wide
+// or province-wide URL outside Colombo. Rather than a URL that looks scoped
+// but silently isn't, every non-Colombo district requests the honest
+// nationwide page and leans on applyFilters' district check for accuracy —
+// same "don't trust a guessed param, trust our own filter" principle as
+// the rest of this file.
 // ---------------------------------------------------------------------------
 
-const LPW_TYPE_SLUG: Record<string, string> = {
+const LPW_LEGACY_TYPE_SLUG: Record<string, string> = {
   House: "House",
-  Apartment: "Apartment",
+  Villa: "Villa",
   "Luxury Residence": "House",
-  Villa: "House",
-  Commercial: "Commercial",
+  "Gated Community Home": "House",
+  "Development Project": "House",
+  "Holiday Home": "Villa",
+  Apartment: "Apartment",
+  // Only the rentals namespace has real Annexe/Room categories; the sale
+  // side falls back to House, the closest real sale category.
+  Annexe: "House",
+  Room: "House",
   Office: "Commercial",
   "Retail Space": "Commercial",
-  Land: "Bare+land",
-  "Residential Land": "Bare+land",
-  Warehouse: "Warehouse",
+  "Commercial Building": "Commercial",
+  Showroom: "Commercial",
+  Restaurant: "Commercial",
+  Hotel: "Commercial",
+  Guesthouse: "Commercial",
+  "Mixed-Use Development": "Commercial",
+  "Cold Storage Facility": "Commercial",
+  "Distribution Centre": "Commercial",
+  Yard: "Commercial",
+  "Logistics Facility": "Commercial",
 };
+// Rental-only overrides — real categories that only exist under
+// /rentals/lease-…, verified against that namespace's own footer links.
+const LPW_RENTAL_TYPE_SLUG: Record<string, string> = { Annexe: "Annexe", Room: "Room" };
 
-export function buildLpwSearchUrl(opts: { dealType: "BUY" | "RENT" | "LEASE"; district?: string; propertyType?: string }) {
-  const type = LPW_TYPE_SLUG[opts.propertyType ?? ""] ?? "All";
-  const loc = opts.district ? `${opts.district}+All_0` : "all";
-  if (opts.dealType === "RENT" || opts.dealType === "LEASE") {
-    return `https://www.lankapropertyweb.com/rentals/lease-${loc}-${type}.html`;
+const LPW_LAND_SUBTYPES = new Set(["Residential Land", "Commercial Land", "Industrial Land", "Agricultural Land", "Estate", "Plantation", "Development Land"]);
+const LPW_COMMERCIAL_SUB_SLUG: Record<string, string> = { Warehouse: "warehouse", Factory: "factory" };
+
+function lpwLocationSegment(district: string | undefined): string {
+  return district === "Colombo" ? "Colombo+All_0" : "all";
+}
+
+export function buildLpwSearchUrl(opts: { dealType: "BUY" | "RENT" | "LEASE"; district?: string; propertyType?: string }): string {
+  const loc = lpwLocationSegment(opts.district);
+  const isRent = opts.dealType !== "BUY";
+
+  if (opts.propertyType && LPW_LAND_SUBTYPES.has(opts.propertyType)) {
+    // No working land-rental namespace was found live (/land/lease-...
+    // 404s) — land searches are sale-only regardless of dealType.
+    return `https://www.lankapropertyweb.com/land/sale-${loc}-all.html`;
   }
-  return `https://www.lankapropertyweb.com/forsale-${loc}-${type}.html`;
+  if (opts.propertyType && LPW_COMMERCIAL_SUB_SLUG[opts.propertyType]) {
+    const slug = LPW_COMMERCIAL_SUB_SLUG[opts.propertyType];
+    // This namespace's location scoping wasn't verified beyond Colombo
+    // live, so it's requested nationwide and left to applyFilters' district
+    // check — safer than a guessed path segment that might silently 404
+    // or silently mis-scope.
+    return isRent ? `https://www.lankapropertyweb.com/rentals/commercial/${slug}/` : `https://www.lankapropertyweb.com/sale/commercial/${slug}/`;
+  }
+
+  const type = isRent ? (LPW_RENTAL_TYPE_SLUG[opts.propertyType ?? ""] ?? LPW_LEGACY_TYPE_SLUG[opts.propertyType ?? ""] ?? "all") : (LPW_LEGACY_TYPE_SLUG[opts.propertyType ?? ""] ?? "all");
+  return isRent ? `https://www.lankapropertyweb.com/rentals/lease-${loc}-${type}.html` : `https://www.lankapropertyweb.com/forsale-${loc}-${type}.html`;
 }
 
 export async function searchLankaPropertyWeb(opts: { dealType: "BUY" | "RENT" | "LEASE"; district?: string; propertyType?: string }): Promise<SourcingResult[]> {
-  const html = await fetchHtml(buildLpwSearchUrl(opts));
+  const url = buildLpwSearchUrl(opts);
+  const { html, ok } = await fetchHtml(url);
+  if (!ok) throw new Error("LankaPropertyWeb search failed (page not found or unreachable).");
   const $ = cheerio.load(html);
   const results: SourcingResult[] = [];
 
@@ -288,7 +494,7 @@ export async function searchLankaPropertyWeb(opts: { dealType: "BUY" | "RENT" | 
     });
   });
 
-  return results.slice(0, 20);
+  return results.slice(0, 30);
 }
 
 // ---------------------------------------------------------------------------
@@ -298,7 +504,8 @@ export async function searchLankaPropertyWeb(opts: { dealType: "BUY" | "RENT" | 
 
 export async function fetchListingText(url: string): Promise<{ text: string; imgUrl?: string }> {
   if (!isAllowedSourceUrl(url)) throw new Error("Only ikman.lk and lankapropertyweb.com listing links are supported.");
-  const html = await fetchHtml(url);
+  const { html, ok } = await fetchHtml(url);
+  if (!ok) throw new Error("Could not load that listing page.");
   const $ = cheerio.load(html);
   $("script, style, nav, header, footer, svg").remove();
 
@@ -352,7 +559,8 @@ const SL_PHONE_RE = /(?:\+94|0)\s?(?:\d[\s-]?){9}/;
 // attempted there and name is left for the human to fill in.
 export async function extractPosterContact(url: string): Promise<{ name?: string; phone?: string }> {
   if (!isAllowedSourceUrl(url)) throw new Error("Only ikman.lk and lankapropertyweb.com listing links are supported.");
-  const html = await fetchHtml(url);
+  const { html, ok } = await fetchHtml(url);
+  if (!ok) throw new Error("Could not load that listing page.");
 
   if (url.includes("ikman.lk")) {
     const data = extractJsAssignment(html, "window.initialData = ") as

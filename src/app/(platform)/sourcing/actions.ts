@@ -11,6 +11,8 @@ import {
   extractPosterContact,
   applyFilters,
   isAllowedSourceUrl,
+  parsePriceToNumber,
+  parsePostedAgoToDays,
   type SourcingResult,
   type SourcingFilters,
 } from "@/lib/sourcing";
@@ -20,7 +22,11 @@ import type { Draft } from "@/lib/intake-types";
 
 const SOURCE_LABEL = { ikman: "ikman.lk", lankapropertyweb: "LankaPropertyWeb" } as const;
 
-export type SourcingSearchResult = SourcingResult & { alreadyImportedPropertyId?: string };
+// priceValue/postedDays are computed here, server-side, rather than in the
+// client — parsePriceToNumber/parsePostedAgoToDays live in lib/sourcing.ts
+// alongside cheerio, which isn't safe to pull into a client bundle. The
+// client only ever sorts by these two already-parsed numbers.
+export type SourcingSearchResult = SourcingResult & { alreadyImportedPropertyId?: string; priceValue?: number; postedDays?: number };
 
 export async function searchExternalListings(
   input: {
@@ -39,12 +45,12 @@ export async function searchExternalListings(
     input.sites.map(async (site) => {
       try {
         if (site === "ikman") {
-          // Still worth sending the fullest query text we have — ikman's own
-          // full-text search benefits from it even though it isn't a real
-          // filter — but applyFilters() below is what actually guarantees
-          // district/type/price/bedrooms are respected, not this string.
-          const q = [input.keyword, input.propertyType, input.district].filter(Boolean).join(" ") || "property";
-          results.push(...(await searchIkman(q)));
+          // Real district/category/deal-type scoping now lives in the URL
+          // itself (see buildIkmanSearchUrl) — keyword is still passed
+          // through as ikman's own in-category text filter (verified live:
+          // it genuinely narrows within a scoped category), not as the only
+          // thing standing between "everything" and an accurate result.
+          results.push(...(await searchIkman({ dealType: input.dealType, district: input.district, propertyType: input.propertyType, keyword: input.keyword })));
         } else {
           results.push(
             ...(await searchLankaPropertyWeb({ dealType: input.dealType, district: input.district, propertyType: input.propertyType })),
@@ -59,6 +65,8 @@ export async function searchExternalListings(
   const filtered = applyFilters(results, {
     district: input.district,
     propertyType: input.propertyType,
+    dealType: input.dealType,
+    keyword: input.keyword,
     priceMin: input.priceMin,
     priceMax: input.priceMax,
     bedrooms: input.bedrooms,
@@ -73,7 +81,12 @@ export async function searchExternalListings(
   const byUrl = new Map(existing.map((p) => [p.sourceUrl, p.id]));
 
   return {
-    results: filtered.map((r) => ({ ...r, alreadyImportedPropertyId: byUrl.get(r.url) })),
+    results: filtered.map((r) => ({
+      ...r,
+      alreadyImportedPropertyId: byUrl.get(r.url),
+      priceValue: parsePriceToNumber(r.price),
+      postedDays: parsePostedAgoToDays(r.postedAgo),
+    })),
     errors,
   };
 }
