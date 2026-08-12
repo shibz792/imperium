@@ -5,7 +5,7 @@ import Link from "next/link";
 import { Search, Download, Check, X, Loader2, ExternalLink, UserPlus, CheckCircle2, ImageOff, SearchX, ArrowUpDown, Clock } from "lucide-react";
 import { searchExternalListings, importListing, extractContactFromListing, saveOutsourcedContact, registerSourcedListing, type SourcingSearchResult } from "./actions";
 import type { Draft, PropertyDraftFields } from "@/lib/intake-types";
-import { ALL_DISTRICTS, PROPERTY_SUBTYPES } from "@/lib/locations";
+import { ALL_DISTRICTS, ALL_CITIES, SRI_LANKA_GEOGRAPHY, PROPERTY_SUBTYPES } from "@/lib/locations";
 import { titleCase } from "@/lib/format";
 
 const SOURCE_LABEL: Record<string, string> = { ikman: "ikman.lk", lankapropertyweb: "LankaPropertyWeb" };
@@ -144,6 +144,16 @@ export function SourcingClient({
     return list;
   }, [results, sortBy]);
 
+  // Narrows to the selected district's own real areas (Nugegoda, Kottawa,
+  // Colombo 5 (Havelock Town), ...) once one's picked, falling back to
+  // every city/area this app knows about otherwise — either way, a real,
+  // known list instead of a free-typed field where a typo or an area name
+  // this app just doesn't recognize silently returns nothing.
+  const cityOptions = useMemo(() => {
+    if (!district) return ALL_CITIES;
+    return SRI_LANKA_GEOGRAPHY.find((d) => d.district === district)?.cities ?? ALL_CITIES;
+  }, [district]);
+
   const counts = useMemo(() => {
     const ikman = results.filter((r) => r.source === "ikman").length;
     const lpw = results.length - ikman;
@@ -199,7 +209,8 @@ export function SourcingClient({
           </div>
           <div>
             <label className="ir-label mb-1 block">City / area</label>
-            <input value={city} onChange={(e) => setCity(e.target.value)} placeholder="Nugegoda, Colombo 7…" className="ir-input" />
+            <input value={city} onChange={(e) => setCity(e.target.value)} list="sourcing-city-list" placeholder="Start typing — Nugegoda, Colombo 7…" className="ir-input" />
+            <datalist id="sourcing-city-list">{cityOptions.map((c) => <option key={c} value={c} />)}</datalist>
           </div>
           <div>
             <label className="ir-label mb-1 block">Property type</label>

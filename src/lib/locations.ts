@@ -79,7 +79,7 @@ export const ALL_PROVINCES = Array.from(new Set(SRI_LANKA_GEOGRAPHY.map((d) => d
 
 // Every form a combined entry like "Colombo 5 (Havelock Town)" could be
 // typed, stored or matched as: the full string, and each half on its own.
-function locationAliases(raw: string): string[] {
+export function locationAliases(raw: string): string[] {
   const s = raw.trim().toLowerCase();
   if (!s) return [];
   const paren = s.match(/^(.+?)\s*\((.+)\)$/);

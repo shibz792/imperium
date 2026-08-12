@@ -1,5 +1,5 @@
 import * as cheerio from "cheerio";
-import { districtForCity } from "./locations";
+import { districtForCity, locationAliases } from "./locations";
 
 // External Sourcing — spec: "connect to ikman.lk / LankaPropertyWeb to find
 // properties and match them to requirements." Scoped deliberately narrow:
@@ -220,7 +220,14 @@ export function applyFilters(results: SourcingResult[], filters: SourcingFilters
     if (filters.district && !locationMatchesDistrict(r.location, filters.district)) return false;
     if (filters.city?.trim()) {
       const hay = `${r.location ?? ""} ${r.title}`.toLowerCase();
-      if (!hay.includes(filters.city.trim().toLowerCase())) return false;
+      // The city field's own autocomplete suggests this app's combined-form
+      // entries ("Colombo 5 (Havelock Town)") — a real listing almost never
+      // writes it that way, only one half or the other. Same alias split
+      // already used everywhere else a saved/typed location gets compared
+      // (see locationsMatch), so picking a suggested option actually matches
+      // real listing text instead of silently returning nothing.
+      const aliases = locationAliases(filters.city.trim());
+      if (!aliases.some((a) => hay.includes(a))) return false;
     }
     if (filters.propertyType) {
       const hay = `${r.location ?? ""} ${r.title}`.toLowerCase();
