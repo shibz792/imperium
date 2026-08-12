@@ -18,7 +18,9 @@ import {
 } from "@/lib/sourcing";
 import { findOrCreateContact } from "@/lib/contacts";
 import { writeAudit, logActivity } from "@/lib/audit";
-import type { Draft } from "@/lib/intake-types";
+import { districtForCity } from "@/lib/locations";
+import { approvePropertyDraft } from "../ai-intake/actions";
+import type { Draft, PropertyDraftFields } from "@/lib/intake-types";
 
 const SOURCE_LABEL = { ikman: "ikman.lk", lankapropertyweb: "LankaPropertyWeb" } as const;
 
@@ -26,7 +28,17 @@ const SOURCE_LABEL = { ikman: "ikman.lk", lankapropertyweb: "LankaPropertyWeb" }
 // client — parsePriceToNumber/parsePostedAgoToDays live in lib/sourcing.ts
 // alongside cheerio, which isn't safe to pull into a client bundle. The
 // client only ever sorts by these two already-parsed numbers.
-export type SourcingSearchResult = SourcingResult & { alreadyImportedPropertyId?: string; priceValue?: number; postedDays?: number };
+//
+// alreadyRegisteredListingId / alreadyImportedPropertyId are two distinct
+// states, not one — a listing can be registered (a SourcedListing exists)
+// without ever having been promoted to a real, owned Property. Only the
+// latter should read as "this is already one of our properties".
+export type SourcingSearchResult = SourcingResult & {
+  alreadyRegisteredListingId?: string;
+  alreadyImportedPropertyId?: string;
+  priceValue?: number;
+  postedDays?: number;
+};
 
 export async function searchExternalListings(
   input: {
@@ -73,20 +85,27 @@ export async function searchExternalListings(
     postedWithinDays: input.postedWithinDays,
   });
 
-  // Dedup-against-DB: a listing already imported shouldn't invite a second
-  // import — flag it instead so the card can link straight to the existing
-  // record.
+  // Dedup-against-DB: a listing already registered shouldn't invite a
+  // second registration — flag it instead so the card can link straight to
+  // the existing SourcedListing, or straight to the promoted Property if
+  // it's gone that far.
   const urls = filtered.map((r) => r.url);
-  const existing = urls.length ? await prisma.property.findMany({ where: { sourceUrl: { in: urls } }, select: { id: true, sourceUrl: true } }) : [];
-  const byUrl = new Map(existing.map((p) => [p.sourceUrl, p.id]));
+  const existing = urls.length
+    ? await prisma.sourcedListing.findMany({ where: { sourceUrl: { in: urls } }, select: { id: true, sourceUrl: true, promotedPropertyId: true } })
+    : [];
+  const byUrl = new Map(existing.map((l) => [l.sourceUrl, l]));
 
   return {
-    results: filtered.map((r) => ({
-      ...r,
-      alreadyImportedPropertyId: byUrl.get(r.url),
-      priceValue: parsePriceToNumber(r.price),
-      postedDays: parsePostedAgoToDays(r.postedAgo),
-    })),
+    results: filtered.map((r) => {
+      const match = byUrl.get(r.url);
+      return {
+        ...r,
+        alreadyRegisteredListingId: match?.id,
+        alreadyImportedPropertyId: match?.promotedPropertyId ?? undefined,
+        priceValue: parsePriceToNumber(r.price),
+        postedDays: parsePostedAgoToDays(r.postedAgo),
+      };
+    }),
     errors,
   };
 }
@@ -143,4 +162,90 @@ export async function saveOutsourcedContact(fields: { name: string; phone: strin
   await logActivity({ entityType: "contact", contactId: id, type: "CREATED", message: `${user.name} saved this contact from a sourced listing (${SOURCE_LABEL[source]}).`, userId: user.id });
   revalidatePath("/contacts");
   return { id };
+}
+
+// ---------------------------------------------------------------------------
+// Registering an ad link — deliberately NOT the same as owning the
+// property. This is the thing that used to happen silently as a side
+// effect of "Import & review": clicking through the AI-drafted fields and
+// approving them created a real Property row immediately, mixing "a
+// listing we noticed on ikman" into the same list as properties this
+// agency actually represents. Registering now only ever creates a
+// SourcedListing; promoteSourcedListing (below) is the separate, explicit
+// action that turns one into a real Property, and a human has to take it.
+// ---------------------------------------------------------------------------
+
+export async function registerSourcedListing(
+  fields: PropertyDraftFields,
+  sourceExcerpt: string,
+  display: Pick<SourcingResult, "price" | "location" | "size" | "imgUrl" | "bedrooms">,
+  url: string,
+  source: "ikman" | "lankapropertyweb",
+): Promise<{ id: string }> {
+  const user = await requireUser();
+  const district = fields.city ? districtForCity(fields.city) : undefined;
+  // Deliberately not fields.transactionType verbatim — that's Property's
+  // own enum (SALE/RENT/LEASE/...); this is the simpler BUY/RENT/LEASE
+  // vocabulary the sourcing UI itself uses, for display consistency with
+  // the search results this listing came from.
+  const dealType = fields.transactionType === "SALE" ? "BUY" : fields.transactionType === "RENT" || fields.transactionType === "LEASE" ? fields.transactionType : undefined;
+
+  const listing = await prisma.sourcedListing.create({
+    data: {
+      source,
+      sourceUrl: url,
+      title: fields.title || `${fields.subtype ?? "Property"} in ${fields.city ?? "location tbc"}`,
+      price: display.price,
+      location: display.location ?? fields.city,
+      size: display.size,
+      imgUrl: display.imgUrl,
+      bedrooms: display.bedrooms ?? fields.bedrooms,
+      dealType,
+      district,
+      propertyType: fields.subtype,
+      sourceExcerpt,
+      fieldsJson: fields as never,
+      registeredBy: { connect: { id: user.id } },
+    },
+  });
+
+  await writeAudit({ userId: user.id, action: "CREATE", entityType: "sourcedListing", entityId: listing.id, after: { title: listing.title, source, sourceUrl: url } });
+  revalidatePath("/sourcing");
+  return { id: listing.id };
+}
+
+// The explicit, separate step that actually creates a real, owned Property
+// — reuses approvePropertyDraft (the same AI-Intake code path) with the
+// field set already reviewed once at registration time, so promoting
+// doesn't re-fetch the listing or re-run AI extraction.
+export async function promoteSourcedListing(id: string): Promise<{ id: string } | { error: string }> {
+  const user = await requireUser();
+  const listing = await prisma.sourcedListing.findUnique({ where: { id } });
+  if (!listing) return { error: "That sourced listing no longer exists." };
+  if (listing.promotedPropertyId) return { error: "Already promoted to a property." };
+
+  const fields = (listing.fieldsJson ?? {}) as PropertyDraftFields;
+  const source = listing.source as "ikman" | "lankapropertyweb";
+  const { id: propertyId } = await approvePropertyDraft(fields, listing.sourceExcerpt ?? "", {
+    source: SOURCE_LABEL[source] ?? listing.source,
+    sourceUrl: listing.sourceUrl,
+  });
+
+  await prisma.sourcedListing.update({ where: { id }, data: { promotedPropertyId: propertyId, promotedAt: new Date(), promotedById: user.id } });
+  await writeAudit({ userId: user.id, action: "PROMOTE", entityType: "sourcedListing", entityId: id, after: { propertyId } });
+  revalidatePath("/sourcing");
+  revalidatePath("/properties");
+  return { id: propertyId };
+}
+
+// Only before promotion — once it's a real property, removing the paper
+// trail back to where it came from isn't something a stray click should do.
+export async function deleteSourcedListing(id: string): Promise<{ ok: boolean; error?: string }> {
+  await requireUser();
+  const listing = await prisma.sourcedListing.findUnique({ where: { id }, select: { promotedPropertyId: true } });
+  if (!listing) return { ok: true };
+  if (listing.promotedPropertyId) return { ok: false, error: "This has already been promoted to a property — nothing to remove." };
+  await prisma.sourcedListing.delete({ where: { id } });
+  revalidatePath("/sourcing");
+  return { ok: true };
 }

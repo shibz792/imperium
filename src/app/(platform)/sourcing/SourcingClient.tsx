@@ -3,8 +3,7 @@
 import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { Search, Download, Check, X, Loader2, ExternalLink, UserPlus, CheckCircle2, ImageOff, SearchX, ArrowUpDown, Clock } from "lucide-react";
-import { searchExternalListings, importListing, extractContactFromListing, saveOutsourcedContact, type SourcingSearchResult } from "./actions";
-import { approvePropertyDraft } from "../ai-intake/actions";
+import { searchExternalListings, importListing, extractContactFromListing, saveOutsourcedContact, registerSourcedListing, type SourcingSearchResult } from "./actions";
 import type { Draft, PropertyDraftFields } from "@/lib/intake-types";
 import { ALL_DISTRICTS, PROPERTY_SUBTYPES } from "@/lib/locations";
 import { titleCase } from "@/lib/format";
@@ -17,6 +16,8 @@ type SortKey = "relevance" | "price-asc" | "price-desc" | "newest";
 // come back — the live filter inputs above keep changing as the agent
 // tweaks them, but the chips row and result count need to describe what's
 // actually on screen, not whatever's currently sitting in a dropdown.
+type ImportTarget = { url: string; source: "ikman" | "lankapropertyweb" } & Partial<Pick<SourcingSearchResult, "price" | "location" | "size" | "imgUrl" | "bedrooms">>;
+
 type AppliedFilters = {
   district: string;
   propertyType: string;
@@ -64,9 +65,9 @@ export function SourcingClient({
   const [searched, setSearched] = useState(false);
   const [pending, startTransition] = useTransition();
   const [importing, setImporting] = useState<string | null>(null);
-  const [draft, setDraft] = useState<{ draft: Draft; url: string; source: "ikman" | "lankapropertyweb" } | null>(null);
+  const [draft, setDraft] = useState<{ draft: Draft; target: ImportTarget } | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
-  const [approved, setApproved] = useState<{ id: string } | null>(null);
+  const [registered, setRegistered] = useState<{ id: string } | null>(null);
 
   function toggleSite(s: "ikman" | "lankapropertyweb") {
     setSites((prev) => (prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]));
@@ -88,7 +89,7 @@ export function SourcingClient({
     setPostedWithinDays(next.postedWithinDays);
     setSearched(true);
     setDraft(null);
-    setApproved(null);
+    setRegistered(null);
     startTransition(async () => {
       const res = await searchExternalListings({
         sites,
@@ -107,15 +108,19 @@ export function SourcingClient({
     });
   }
 
-  function doImport(url: string, source: "ikman" | "lankapropertyweb") {
+  // A pasted link has no scraped price/photo/etc to carry forward (only a
+  // search result card does — see ImportTarget below); registering it
+  // still works fine with those left blank, best-effort like everywhere
+  // else in this file.
+  function doImport(target: ImportTarget) {
     setImportError(null);
-    setImporting(url);
-    setApproved(null);
+    setImporting(target.url);
+    setRegistered(null);
     startTransition(async () => {
-      const res = await importListing(url, source);
+      const res = await importListing(target.url, target.source);
       setImporting(null);
       if (res.error || !res.draft) setImportError(res.error ?? "Import failed.");
-      else setDraft({ draft: res.draft, url, source });
+      else setDraft({ draft: res.draft, target });
     });
   }
 
@@ -230,7 +235,7 @@ export function SourcingClient({
           <input value={pasteUrl} onChange={(e) => setPasteUrl(e.target.value)} placeholder="https://ikman.lk/en/ad/… or lankapropertyweb.com/…" className="ir-input" />
         </div>
         <button
-          onClick={() => doImport(pasteUrl, pasteUrl.includes("ikman.lk") ? "ikman" : "lankapropertyweb")}
+          onClick={() => doImport({ url: pasteUrl, source: pasteUrl.includes("ikman.lk") ? "ikman" : "lankapropertyweb" })}
           disabled={!pasteUrl || pending}
           className="ir-btn ir-btn-primary disabled:opacity-50"
         >
@@ -247,23 +252,19 @@ export function SourcingClient({
         <div className="mb-4 rounded border border-[#8c4a3e4d] bg-[color:var(--color-brick-tint)] p-3 text-xs text-[color:var(--color-brick)]">{importError}</div>
       )}
 
-      {draft && !approved && (
-        <DraftReview draft={draft.draft} url={draft.url} source={draft.source} onApprove={(id) => setApproved({ id })} onDiscard={() => setDraft(null)} />
+      {draft && !registered && (
+        <DraftReview draft={draft.draft} target={draft.target} onRegister={(id) => setRegistered({ id })} onDiscard={() => setDraft(null)} />
       )}
-      {approved && (
+      {registered && (
         <div className="ir-card mb-5 border-emerald-200 bg-emerald-50/50 p-4">
           <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2 text-sm text-emerald-800"><Check size={16} /> Imported as a draft property.</div>
-            <div className="flex items-center gap-3">
-              {requirementContext && (
-                <Link href={`/matchmaker?mode=requirement&requirementId=${requirementContext.requirementId}`} className="text-xs font-medium text-emerald-700 hover:underline">
-                  Back to {requirementContext.requirementRef} matches →
-                </Link>
-              )}
-              <Link href={`/properties/${approved.id}`} className="text-xs font-medium text-emerald-700 hover:underline">View record →</Link>
-            </div>
+            <div className="flex items-center gap-2 text-sm text-emerald-800"><Check size={16} /> Registered as a sourced listing.</div>
+            <Link href="/sourcing?tab=registered" className="text-xs font-medium text-emerald-700 hover:underline">View in Registered Listings →</Link>
           </div>
-          <p className="mt-1.5 text-[0.7rem] text-emerald-700/80">It&rsquo;s saved as a draft, not visible to clients yet. Verify the details and activate the listing before it shows up as a match.</p>
+          <p className="mt-1.5 text-[0.7rem] text-emerald-700/80">
+            This is a lead, not one of your properties yet — it won&rsquo;t show up in Properties or match against requirements until you promote it from Registered Listings.
+            {requirementContext && " That's also where you'd promote it before matching it back to " + requirementContext.requirementRef + "."}
+          </p>
         </div>
       )}
 
@@ -363,7 +364,7 @@ function ResultCard({
   result: SourcingSearchResult;
   pending: boolean;
   importing: string | null;
-  onImport: (url: string, source: "ikman" | "lankapropertyweb") => void;
+  onImport: (target: ImportTarget) => void;
 }) {
   const [showSave, setShowSave] = useState(false);
   const [loadingContact, setLoadingContact] = useState(false);
@@ -430,11 +431,19 @@ function ResultCard({
 
         {r.alreadyImportedPropertyId ? (
           <Link href={`/properties/${r.alreadyImportedPropertyId}`} className="mt-auto flex items-center justify-center gap-1.5 rounded border border-[color:var(--color-forest)]/30 bg-[color:var(--color-forest)]/10 px-3 py-2 text-xs font-medium text-[color:var(--color-forest)]">
-            <CheckCircle2 size={13} /> Already in database →
+            <CheckCircle2 size={13} /> Already a property →
+          </Link>
+        ) : r.alreadyRegisteredListingId ? (
+          <Link href="/sourcing?tab=registered" className="mt-auto flex items-center justify-center gap-1.5 rounded border border-ir-navy/20 bg-ir-navy/[0.04] px-3 py-2 text-xs font-medium text-ir-navy">
+            <CheckCircle2 size={13} /> Already registered →
           </Link>
         ) : (
           <div className="mt-auto flex items-center gap-2">
-            <button onClick={() => onImport(r.url, r.source)} disabled={pending} className="ir-btn ir-btn-primary flex-1 justify-center !text-xs disabled:opacity-50">
+            <button
+              onClick={() => onImport({ url: r.url, source: r.source, price: r.price, location: r.location, size: r.size, imgUrl: r.imgUrl, bedrooms: r.bedrooms })}
+              disabled={pending}
+              className="ir-btn ir-btn-primary flex-1 justify-center !text-xs disabled:opacity-50"
+            >
               {importing === r.url ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />} Import
             </button>
             {savedContactId ? (
@@ -489,15 +498,13 @@ function ResultCard({
 
 function DraftReview({
   draft,
-  url,
-  source,
-  onApprove,
+  target,
+  onRegister,
   onDiscard,
 }: {
   draft: Draft;
-  url: string;
-  source: "ikman" | "lankapropertyweb";
-  onApprove: (propertyId: string) => void;
+  target: ImportTarget;
+  onRegister: (listingId: string) => void;
   onDiscard: () => void;
 }) {
   const [fields, setFields] = useState<Record<string, unknown>>(draft.fields as Record<string, unknown>);
@@ -507,17 +514,20 @@ function DraftReview({
   return (
     <div className="ir-card mb-5 grid grid-cols-1 overflow-hidden lg:grid-cols-2">
       <div className="border-b border-black/8 bg-ir-ivory/60 p-4 lg:border-b-0 lg:border-r">
-        <div className="ir-label mb-2">Fetched from {SOURCE_LABEL[source]}</div>
-        <a href={url} target="_blank" rel="noreferrer" className="mb-2 inline-flex items-center gap-1 text-xs text-ir-gold-dark hover:underline">
-          {url} <ExternalLink size={11} />
+        <div className="ir-label mb-2">Fetched from {SOURCE_LABEL[target.source]}</div>
+        <a href={target.url} target="_blank" rel="noreferrer" className="mb-2 inline-flex items-center gap-1 text-xs text-ir-gold-dark hover:underline">
+          {target.url} <ExternalLink size={11} />
         </a>
         <p className="whitespace-pre-line text-[0.8125rem] leading-relaxed text-black/70">{draft.sourceExcerpt}</p>
       </div>
       <div className="p-4">
         <div className="mb-3 flex items-center justify-between">
-          <span className="ir-badge bg-ir-navy/10 text-ir-navy">Property draft</span>
+          <span className="ir-badge bg-ir-navy/10 text-ir-navy">Sourced listing draft</span>
           <span className="ir-badge bg-ir-gold/20 text-ir-gold-dark">{draft.confidence}% confidence</span>
         </div>
+        <p className="mb-3 text-[0.7rem] text-black/40">
+          Registering keeps this as a lead, separate from your owned properties — you decide later, from Registered Listings, whether it&apos;s worth promoting to a real property.
+        </p>
         {draft.duplicates.length > 0 && (
           <div className="mb-3 rounded border border-amber-200 bg-amber-50 p-2.5 text-xs text-amber-900">
             Possible duplicate: {draft.duplicates.map((d) => `${d.label} (${d.ref})`).join(", ")}
@@ -548,14 +558,19 @@ function DraftReview({
             disabled={pending}
             onClick={() =>
               startTransition(async () => {
-                const label = SOURCE_LABEL[source];
-                const res = await approvePropertyDraft(fields as PropertyDraftFields, draft.sourceExcerpt, { source: label, sourceUrl: url });
-                onApprove(res.id);
+                const res = await registerSourcedListing(
+                  fields as PropertyDraftFields,
+                  draft.sourceExcerpt,
+                  { price: target.price, location: target.location, size: target.size, imgUrl: target.imgUrl, bedrooms: target.bedrooms },
+                  target.url,
+                  target.source,
+                );
+                onRegister(res.id);
               })
             }
             className="ir-btn ir-btn-primary disabled:opacity-50"
           >
-            {pending ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />} Approve &amp; create
+            {pending ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />} Register listing
           </button>
         </div>
       </div>

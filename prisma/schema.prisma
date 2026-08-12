@@ -80,6 +80,8 @@ model User {
   metaCampaignsCreated      MetaCampaign[]          @relation("MetaCampaignCreator")
   excludedFromContacts      ContactAgentExclusion[] @relation("ExcludedFromContact")
   contactExclusionsCreated  ContactAgentExclusion[] @relation("ContactExclusionCreator")
+  sourcedListingsRegistered SourcedListing[]        @relation("SourcedListingRegisteredBy")
+  sourcedListingsPromoted   SourcedListing[]        @relation("SourcedListingPromotedBy")
 }
 
 // One connected Google account per user — Calendar (two-way: viewings/tasks
@@ -371,6 +373,10 @@ model Property {
   matchShares     MatchShare[]
   notes           Note[]
   metaCampaigns   MetaCampaign[]
+  // The sourced-listing this property was promoted from, if any — Property
+  // doesn't own this FK (SourcedListing.promotedPropertyId does), so this
+  // side is just the reverse lookup.
+  sourcedListing  SourcedListing?
 
   @@index([listingStatus])
   @@index([assignedAgentId])
@@ -379,6 +385,52 @@ model Property {
   @@index([city])
   @@index([category])
   @@index([createdAt])
+}
+
+// A registered external ad link — deliberately NOT a Property. Importing a
+// listing from ikman.lk/LankaPropertyWeb used to create a real Property
+// row immediately, which conflated "an ad we noticed externally" with "a
+// listing this agency actually owns/represents". Registering now creates
+// one of these instead; turning it into a real, owned Property is a
+// separate, explicit "Promote" action (see promoteSourcedListing in
+// sourcing/actions.ts) that a human decides to take later, not a side
+// effect of having looked at the ad.
+model SourcedListing {
+  id            String   @id @default(cuid())
+  source        String // "ikman" | "lankapropertyweb"
+  sourceUrl     String   @unique
+  title         String
+  price         String?
+  location      String?
+  size          String?
+  imgUrl        String?
+  bedrooms      Int?
+  // The search context this was found under — plain string, not
+  // Property.TransactionType ("BUY" here, not "SALE"), since this
+  // describes what the agent was looking for, not a promoted property's
+  // eventual real transaction type (those can diverge, e.g. LEASE vs RENT).
+  dealType      String?
+  district      String?
+  propertyType  String?
+  sourceExcerpt String?
+  // The full AI-drafted, human-reviewed field set captured at registration
+  // time (PropertyDraftFields, same shape AI Intake uses) — stored so
+  // promoting later reuses exactly what was already reviewed once, rather
+  // than re-fetching the listing and re-running AI extraction.
+  fieldsJson Json?
+
+  registeredById String?
+  registeredBy   User?    @relation("SourcedListingRegisteredBy", fields: [registeredById], references: [id])
+  createdAt      DateTime @default(now())
+
+  promotedPropertyId String?   @unique
+  promotedProperty   Property? @relation(fields: [promotedPropertyId], references: [id])
+  promotedAt         DateTime?
+  promotedById       String?
+  promotedBy         User?     @relation("SourcedListingPromotedBy", fields: [promotedById], references: [id])
+
+  @@index([source])
+  @@index([registeredById])
 }
 
 enum MediaType {
