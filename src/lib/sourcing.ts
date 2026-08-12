@@ -360,6 +360,38 @@ const IKMAN_CATEGORY_BY_SUBTYPE: Record<string, { sale: string; rent: string }> 
   "Development Land": { sale: "land-for-sale", rent: "land-for-rent" },
 };
 
+// ikman's commercial-properties-for-sale/-rentals category (939/940) has no
+// child categories, but DOES carry a real per-listing "item_type" facet
+// (Building/Hotel/Warehouse-Storage/Office/Shop/Factory-Workshop/
+// Restaurant/Other) — found in its own dynamic-filters payload. That facet
+// only drives a client-side JS filter, though (verified live:
+// ?item_type=office left postedAdCount completely unchanged), so it can't
+// be used as a URL param the way category/location/page can. What DOES
+// work: feeding the same word into ikman's own `query` full-text search,
+// which searches each ad's full description, not just its title — this
+// was measured directly (a `query=office` search scoped to the Commercial
+// category returned 26 targeted, genuinely office-related results, a real
+// middle ground between the unfiltered category's ~670 and the 5 that
+// survived this app's old brittle title-only regex). No such facet exists
+// for houses-for-sale or land-for-sale (checked their dynamic filters too
+// — bedrooms/bathrooms/price/size only) — ikman genuinely cannot
+// distinguish a Villa from a House, or Agricultural Land from Residential
+// Land, so those subtypes get no hint and just trust the category.
+const IKMAN_ITEM_TYPE_HINT: Record<string, string> = {
+  Office: "office",
+  "Retail Space": "shop",
+  "Commercial Building": "building",
+  Showroom: "shop",
+  Restaurant: "restaurant",
+  Hotel: "hotel",
+  Guesthouse: "hotel",
+  Warehouse: "warehouse",
+  Factory: "factory",
+  "Cold Storage Facility": "warehouse",
+  "Distribution Centre": "warehouse",
+  "Logistics Facility": "warehouse",
+};
+
 // ikman's location slugs are simply the district name, lowercased and
 // space-hyphenated ("Nuwara Eliya" → "nuwara-eliya") — verified against
 // every district this app offers, including the multi-word one.
@@ -376,8 +408,10 @@ export function buildIkmanSearchUrl(opts: { dealType: "BUY" | "RENT" | "LEASE"; 
   // for deal-type accuracy in that one case, since no URL segment can
   // narrow an umbrella category by sale-vs-rent on its own.
   const categorySlug = cat ? (opts.dealType === "BUY" ? cat.sale : cat.rent) : "property";
+  const itemTypeHint = opts.propertyType ? IKMAN_ITEM_TYPE_HINT[opts.propertyType] : undefined;
+  const query = [opts.keyword?.trim(), itemTypeHint].filter(Boolean).join(" ");
   const params = new URLSearchParams();
-  if (opts.keyword?.trim()) params.set("query", opts.keyword.trim());
+  if (query) params.set("query", query);
   if (opts.page && opts.page > 1) params.set("page", String(opts.page));
   const qs = params.toString();
   return `https://ikman.lk/en/ads/${locationSlug}/${categorySlug}${qs ? `?${qs}` : ""}`;
@@ -494,6 +528,13 @@ export async function searchIkman(opts: { dealType: "BUY" | "RENT" | "LEASE"; di
 // principle as the rest of this file.
 // ---------------------------------------------------------------------------
 
+// Only the House-family and Annexe/Room now go through this coarse map —
+// every commercial/industrial subtype below routes through
+// LPW_COMMERCIAL_SUB_SLUG's real dedicated category pages instead (see
+// that map's own comment for why). ikman genuinely can't tell a Villa from
+// a House either (checked its dynamic filters — bedrooms/bathrooms/price/
+// size only, no house-type facet), so there's no equivalent finer routing
+// possible for this bucket on either site — this is the real ceiling.
 const LPW_LEGACY_TYPE_SLUG: Record<string, string> = {
   House: "House",
   Villa: "Villa",
@@ -506,25 +547,41 @@ const LPW_LEGACY_TYPE_SLUG: Record<string, string> = {
   // side falls back to House, the closest real sale category.
   Annexe: "House",
   Room: "House",
-  Office: "Commercial",
-  "Retail Space": "Commercial",
-  "Commercial Building": "Commercial",
-  Showroom: "Commercial",
-  Restaurant: "Commercial",
-  Hotel: "Commercial",
-  Guesthouse: "Commercial",
-  "Mixed-Use Development": "Commercial",
-  "Cold Storage Facility": "Commercial",
-  "Distribution Centre": "Commercial",
-  Yard: "Commercial",
-  "Logistics Facility": "Commercial",
 };
 // Rental-only overrides — real categories that only exist under
 // /rentals/…, verified against that namespace's own footer links.
 const LPW_RENTAL_TYPE_SLUG: Record<string, string> = { Annexe: "Annexe", Room: "Room" };
 
 const LPW_LAND_SUBTYPES = new Set(["Residential Land", "Commercial Land", "Industrial Land", "Agricultural Land", "Estate", "Plantation", "Development Land"]);
-const LPW_COMMERCIAL_SUB_SLUG: Record<string, string> = { Warehouse: "warehouse", Factory: "factory" };
+
+// LankaPropertyWeb's real commercial sub-taxonomy — found by crawling
+// /sale/commercial/'s own category links, not guessed, then each slug
+// individually confirmed live (real, distinct property counts, not a
+// silent fallback to the generic commercial page). Far more granular than
+// the coarse "Commercial" bucket this app originally mapped everything to:
+// building, factory, guest-house, hospital, hotel, multipurpose, office,
+// restaurant, shop, shopping-mall, warehouse are all real, separately
+// browsable categories on this site. Cold Storage/Distribution/Logistics/
+// Yard have no dedicated page of their own (confirmed — those slugs
+// silently serve the generic commercial listing instead of a real
+// sub-category), so they fall back to "warehouse" as the closest real
+// bucket rather than the much broader, unrelated-heavy "Commercial" one.
+const LPW_COMMERCIAL_SUB_SLUG: Record<string, string> = {
+  Office: "office",
+  "Retail Space": "shop",
+  "Commercial Building": "building",
+  Showroom: "shop",
+  Restaurant: "restaurant",
+  Hotel: "hotel",
+  Guesthouse: "guest-house",
+  "Mixed-Use Development": "multipurpose",
+  Warehouse: "warehouse",
+  Factory: "factory",
+  "Cold Storage Facility": "warehouse",
+  "Distribution Centre": "warehouse",
+  Yard: "warehouse",
+  "Logistics Facility": "warehouse",
+};
 
 function lpwLocationSegment(district: string | undefined): string {
   return district === "Colombo" ? "Colombo+All_0" : "all";
