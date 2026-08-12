@@ -367,7 +367,7 @@ function ikmanLocationSlug(district: string): string {
   return district.toLowerCase().replace(/\s+/g, "-");
 }
 
-export function buildIkmanSearchUrl(opts: { dealType: "BUY" | "RENT" | "LEASE"; district?: string; propertyType?: string; keyword?: string }): string {
+export function buildIkmanSearchUrl(opts: { dealType: "BUY" | "RENT" | "LEASE"; district?: string; propertyType?: string; keyword?: string; page?: number }): string {
   const locationSlug = opts.district ? ikmanLocationSlug(opts.district) : "sri-lanka";
   const cat = opts.propertyType ? IKMAN_CATEGORY_BY_SUBTYPE[opts.propertyType] : undefined;
   // "property" is the live (non-deactivated) umbrella category — every
@@ -376,8 +376,11 @@ export function buildIkmanSearchUrl(opts: { dealType: "BUY" | "RENT" | "LEASE"; 
   // for deal-type accuracy in that one case, since no URL segment can
   // narrow an umbrella category by sale-vs-rent on its own.
   const categorySlug = cat ? (opts.dealType === "BUY" ? cat.sale : cat.rent) : "property";
-  const query = opts.keyword?.trim() ? `?query=${encodeURIComponent(opts.keyword.trim())}` : "";
-  return `https://ikman.lk/en/ads/${locationSlug}/${categorySlug}${query}`;
+  const params = new URLSearchParams();
+  if (opts.keyword?.trim()) params.set("query", opts.keyword.trim());
+  if (opts.page && opts.page > 1) params.set("page", String(opts.page));
+  const qs = params.toString();
+  return `https://ikman.lk/en/ads/${locationSlug}/${categorySlug}${qs ? `?${qs}` : ""}`;
 }
 
 function mapIkmanAd(ad: Record<string, unknown>): SourcingResult {
@@ -398,9 +401,27 @@ function mapIkmanAd(ad: Record<string, unknown>): SourcingResult {
   };
 }
 
+function parseIkmanAds(html: string): Array<Record<string, unknown>> {
+  const data = extractJsAssignment(html, "window.initialData = ") as
+    | { serp?: { ads?: { data?: { ads?: Array<Record<string, unknown>> } } } }
+    | null;
+  return data?.serp?.ads?.data?.ads ?? [];
+}
+
+// One page returns ~26 ads — nowhere near enough to filter down from
+// afterwards for anything but the broadest search, which is most of why
+// results felt thin once real district/type/price/etc filters were applied
+// on top. ikman's own pagination (?page=N) is real and reliable — verified
+// live across 3 pages with zero repeated ads — so this fetches several
+// pages up front and merges them into one real candidate pool before
+// applyFilters ever runs.
+const IKMAN_PAGES = 3;
+
 export async function searchIkman(opts: { dealType: "BUY" | "RENT" | "LEASE"; district?: string; propertyType?: string; keyword?: string }): Promise<SourcingResult[]> {
-  const url = buildIkmanSearchUrl(opts);
-  let { html, ok } = await fetchHtml(url);
+  const first = await fetchHtml(buildIkmanSearchUrl(opts));
+  let baseOpts = opts;
+  let html = first.html;
+  let ok = first.ok;
 
   // A location/category combination that turns out not to exist (rare —
   // every district+category this app can produce was checked, but a future
@@ -408,48 +429,69 @@ export async function searchIkman(opts: { dealType: "BUY" | "RENT" | "LEASE"; di
   // sri-lanka-wide search on the same category rather than surfacing a
   // dead end; applyFilters' district check still guards accuracy from there.
   if (!ok && opts.district) {
-    ({ html, ok } = await fetchHtml(buildIkmanSearchUrl({ ...opts, district: undefined })));
+    baseOpts = { ...opts, district: undefined };
+    ({ html, ok } = await fetchHtml(buildIkmanSearchUrl(baseOpts)));
   }
   if (!ok) throw new Error(`ikman.lk search failed (page not found or unreachable).`);
 
-  const data = extractJsAssignment(html, "window.initialData = ") as
-    | { serp?: { ads?: { data?: { ads?: Array<Record<string, unknown>> } } } }
-    | null;
-  const ads = data?.serp?.ads?.data?.ads ?? [];
-  return ads.slice(0, 30).map(mapIkmanAd);
+  const firstPageAds = parseIkmanAds(html);
+  const restPages = await Promise.all(
+    Array.from({ length: IKMAN_PAGES - 1 }, (_, i) =>
+      fetchHtml(buildIkmanSearchUrl({ ...baseOpts, page: i + 2 }))
+        .then((r) => (r.ok ? parseIkmanAds(r.html) : []))
+        .catch(() => []),
+    ),
+  );
+
+  const seen = new Set<string>();
+  const allAds = [firstPageAds, ...restPages].flat().filter((ad) => {
+    const slug = String(ad.slug ?? "");
+    if (!slug || seen.has(slug)) return false;
+    seen.add(slug);
+    return true;
+  });
+  return allAds.map(mapIkmanAd);
 }
 
 // ---------------------------------------------------------------------------
 // LankaPropertyWeb — plain server-rendered HTML with stable semantic class
 // names (no CSS-module hashing), so a real DOM parse (cheerio) works well.
 //
-// The site actually has THREE separate URL namespaces, not one — found by
+// The site actually has FOUR relevant URL forms, not one — found by
 // crawling its own internal cross-links rather than guessing:
-//   /forsale-{location}-{Type}.html + /rentals/lease-{location}-{Type}.html
+//   /sale/index.php?page=N&location=..&property-type=..&searchbox=..
+//   /rentals/index.php?page=N&location=..&property-type=..&searchbox=..
 //     — the general case (House, Apartment, Villa, Bungalow, Studio, and a
 //     coarse "Commercial" bucket that covers everything commercial/
-//     industrial except the two below).
-//   /land/sale-{location}-all.html
-//     — ALL land listings live here, completely separately from /forsale/.
+//     industrial except the two below). These query-string endpoints are
+//     used instead of the site's own prettier /forsale-{loc}-{type}.html
+//     static path — that one *claims* to support ?page=N too, but was
+//     tested live 4 pages deep and is unreliable (page 2/3/4 sometimes
+//     returned byte-identical results to page 1, apparently caching-
+//     dependent); the index.php form paginated correctly and consistently
+//     every time it was tested.
+//   /land/index.php?search=1&location=..&property-type=all&page=N
+//     — ALL land listings live here, completely separately from sale/rent.
 //     The old code pointed land at /forsale-{loc}-Bare+land.html, which
 //     silently returned zero results — land was effectively unsearchable.
-//   /sale/commercial/{subtype}/ + /rentals/commercial/{subtype}/
+//   /sale/commercial/{subtype}/?page=N + /rentals/commercial/{subtype}/?page=N
 //     — warehouse and factory specifically get their own indexed pages
 //     here; the old code mapped Warehouse to /forsale-{loc}-Warehouse.html,
 //     which 404s (confirmed live) — every warehouse search was a hard
 //     failure, not just an inaccurate one.
 //
 // Location scoping only genuinely works for the district "Colombo" — its
-// "{District}+All_0" form is a real, verified shortcut. Every other
-// district's "{Province}_All_0" form was tested live and silently resolves
-// to the *entire country* regardless of which province is given (confirmed
-// by requesting five different provinces and getting the identical count
-// back each time) — LankaPropertyWeb simply has no working district-wide
-// or province-wide URL outside Colombo. Rather than a URL that looks scoped
-// but silently isn't, every non-Colombo district requests the honest
-// nationwide page and leans on applyFilters' district check for accuracy —
-// same "don't trust a guessed param, trust our own filter" principle as
-// the rest of this file.
+// "{District}+All_0" form is a real, verified shortcut (also accepted
+// hyphenated, "Colombo-All_0" — both tested and behave identically).
+// Every other district's "{Province}_All_0" form was tested live and
+// silently resolves to the *entire country* regardless of which province is
+// given (confirmed by requesting five different provinces and getting the
+// identical count back each time) — LankaPropertyWeb simply has no working
+// district-wide or province-wide URL outside Colombo. Rather than a URL
+// that looks scoped but silently isn't, every non-Colombo district requests
+// the honest nationwide page and leans on applyFilters' district check for
+// accuracy — same "don't trust a guessed param, trust our own filter"
+// principle as the rest of this file.
 // ---------------------------------------------------------------------------
 
 const LPW_LEGACY_TYPE_SLUG: Record<string, string> = {
@@ -478,7 +520,7 @@ const LPW_LEGACY_TYPE_SLUG: Record<string, string> = {
   "Logistics Facility": "Commercial",
 };
 // Rental-only overrides — real categories that only exist under
-// /rentals/lease-…, verified against that namespace's own footer links.
+// /rentals/…, verified against that namespace's own footer links.
 const LPW_RENTAL_TYPE_SLUG: Record<string, string> = { Annexe: "Annexe", Room: "Room" };
 
 const LPW_LAND_SUBTYPES = new Set(["Residential Land", "Commercial Land", "Industrial Land", "Agricultural Land", "Estate", "Plantation", "Development Land"]);
@@ -488,32 +530,44 @@ function lpwLocationSegment(district: string | undefined): string {
   return district === "Colombo" ? "Colombo+All_0" : "all";
 }
 
-export function buildLpwSearchUrl(opts: { dealType: "BUY" | "RENT" | "LEASE"; district?: string; propertyType?: string }): string {
-  const loc = lpwLocationSegment(opts.district);
-  const isRent = opts.dealType !== "BUY";
+type LpwRoute = { kind: "index"; base: "sale" | "rentals"; type: string } | { kind: "land" } | { kind: "commercial-sub"; base: "sale" | "rentals"; slug: string };
 
-  if (opts.propertyType && LPW_LAND_SUBTYPES.has(opts.propertyType)) {
+function lpwRoute(opts: { dealType: "BUY" | "RENT" | "LEASE"; propertyType?: string }): LpwRoute {
+  const isRent = opts.dealType !== "BUY";
+  if (opts.propertyType && LPW_LAND_SUBTYPES.has(opts.propertyType)) return { kind: "land" };
+  if (opts.propertyType && LPW_COMMERCIAL_SUB_SLUG[opts.propertyType]) {
+    return { kind: "commercial-sub", base: isRent ? "rentals" : "sale", slug: LPW_COMMERCIAL_SUB_SLUG[opts.propertyType] };
+  }
+  const type = isRent ? (LPW_RENTAL_TYPE_SLUG[opts.propertyType ?? ""] ?? LPW_LEGACY_TYPE_SLUG[opts.propertyType ?? ""] ?? "all") : (LPW_LEGACY_TYPE_SLUG[opts.propertyType ?? ""] ?? "all");
+  return { kind: "index", base: isRent ? "rentals" : "sale", type };
+}
+
+export function buildLpwSearchUrl(opts: { dealType: "BUY" | "RENT" | "LEASE"; district?: string; propertyType?: string; page?: number }): string {
+  const loc = lpwLocationSegment(opts.district);
+  const page = opts.page ?? 1;
+  const route = lpwRoute(opts);
+
+  if (route.kind === "land") {
     // No working land-rental namespace was found live (/land/lease-...
     // 404s) — land searches are sale-only regardless of dealType.
-    return `https://www.lankapropertyweb.com/land/sale-${loc}-all.html`;
+    const params = new URLSearchParams({ search: "1", location: loc, "property-type": "all" });
+    if (page > 1) params.set("page", String(page));
+    return `https://www.lankapropertyweb.com/land/index.php?${params.toString()}`;
   }
-  if (opts.propertyType && LPW_COMMERCIAL_SUB_SLUG[opts.propertyType]) {
-    const slug = LPW_COMMERCIAL_SUB_SLUG[opts.propertyType];
+  if (route.kind === "commercial-sub") {
     // This namespace's location scoping wasn't verified beyond Colombo
     // live, so it's requested nationwide and left to applyFilters' district
     // check — safer than a guessed path segment that might silently 404
     // or silently mis-scope.
-    return isRent ? `https://www.lankapropertyweb.com/rentals/commercial/${slug}/` : `https://www.lankapropertyweb.com/sale/commercial/${slug}/`;
+    const qs = page > 1 ? `?page=${page}` : "";
+    return `https://www.lankapropertyweb.com/${route.base}/commercial/${route.slug}/${qs}`;
   }
-
-  const type = isRent ? (LPW_RENTAL_TYPE_SLUG[opts.propertyType ?? ""] ?? LPW_LEGACY_TYPE_SLUG[opts.propertyType ?? ""] ?? "all") : (LPW_LEGACY_TYPE_SLUG[opts.propertyType ?? ""] ?? "all");
-  return isRent ? `https://www.lankapropertyweb.com/rentals/lease-${loc}-${type}.html` : `https://www.lankapropertyweb.com/forsale-${loc}-${type}.html`;
+  const params = new URLSearchParams({ location: loc, "property-type": route.type, searchbox: opts.district ?? "Sri Lanka" });
+  if (page > 1) params.set("page", String(page));
+  return `https://www.lankapropertyweb.com/${route.base}/index.php?${params.toString()}`;
 }
 
-export async function searchLankaPropertyWeb(opts: { dealType: "BUY" | "RENT" | "LEASE"; district?: string; propertyType?: string }): Promise<SourcingResult[]> {
-  const url = buildLpwSearchUrl(opts);
-  const { html, ok } = await fetchHtml(url);
-  if (!ok) throw new Error("LankaPropertyWeb search failed (page not found or unreachable).");
+function parseLpwListings(html: string): SourcingResult[] {
   const $ = cheerio.load(html);
   const results: SourcingResult[] = [];
 
@@ -540,7 +594,34 @@ export async function searchLankaPropertyWeb(opts: { dealType: "BUY" | "RENT" | 
     });
   });
 
-  return results.slice(0, 30);
+  return results;
+}
+
+// Same reasoning as IKMAN_PAGES — one page (30 listings) left little to
+// work with once real filters ran on top. LPW's index.php pagination was
+// verified live, 3 pages deep, with zero repeated listings.
+const LPW_PAGES = 3;
+
+export async function searchLankaPropertyWeb(opts: { dealType: "BUY" | "RENT" | "LEASE"; district?: string; propertyType?: string }): Promise<SourcingResult[]> {
+  const pages = await Promise.all(
+    Array.from({ length: LPW_PAGES }, (_, i) =>
+      fetchHtml(buildLpwSearchUrl({ ...opts, page: i + 1 }))
+        .then((r) => (r.ok ? parseLpwListings(r.html) : null))
+        .catch(() => null),
+    ),
+  );
+
+  if (pages[0] === null) throw new Error("LankaPropertyWeb search failed (page not found or unreachable).");
+
+  const seen = new Set<string>();
+  return pages
+    .filter((p): p is SourcingResult[] => p !== null)
+    .flat()
+    .filter((r) => {
+      if (seen.has(r.url)) return false;
+      seen.add(r.url);
+      return true;
+    });
 }
 
 // ---------------------------------------------------------------------------
