@@ -182,25 +182,6 @@ function locationMatchesDistrict(location: string | undefined, district: string)
   return tokens.some((t) => districtForCity(t) === district);
 }
 
-function escapeRegex(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-// Fixes a real, confirmed bug: a plain substring check for propertyType
-// "House" matched "Warehouse" too (it's a literal substring of it), which
-// meant selecting "House" quietly let every warehouse listing through —
-// exactly the "search pulls everything" complaint. Word-boundary matching
-// against each significant word in the (possibly multi-word, internal-only)
-// property type label fixes that class of false positive, while still
-// matching a phrase like "Retail Space" against a title that only says one
-// of the two words (real listing titles rarely use this app's own category
-// vocabulary verbatim).
-function propertyTypeMatches(hay: string, propertyType: string): boolean {
-  const words = propertyType.toLowerCase().split(/\s+/).filter((w) => w.length > 2);
-  if (words.length === 0) return true;
-  return words.some((w) => new RegExp(`\\b${escapeRegex(w)}\\b`, "i").test(hay));
-}
-
 const SALE_AD_TYPES = new Set(["for_sale", "to_buy"]);
 const RENT_AD_TYPES = new Set(["for_rent", "to_rent"]);
 
@@ -229,10 +210,22 @@ export function applyFilters(results: SourcingResult[], filters: SourcingFilters
       const aliases = locationAliases(filters.city.trim());
       if (!aliases.some((a) => hay.includes(a))) return false;
     }
-    if (filters.propertyType) {
-      const hay = `${r.location ?? ""} ${r.title}`.toLowerCase();
-      if (!propertyTypeMatches(hay, filters.propertyType)) return false;
-    }
+    // Deliberately no propertyType text-filter here (there used to be one,
+    // word-boundary matched against title/location) — measured live and
+    // removed after it was found to be net-harmful, not just imprecise.
+    // This app's own subtype vocabulary (Villa, Luxury Residence, Office,
+    // Retail Space, Cold Storage Facility, ...) is finer than either site's
+    // real category taxonomy, which tops out at House / Apartment / Land /
+    // Commercial. Requiring a listing's title to literally contain the
+    // subtype word only ever removes real matches — sellers write "Prime
+    // Commercial Building for Sale", not "Office" — it can never add one
+    // back that the URL routing missed. Checked on a live "Office" search:
+    // buildIkmanSearchUrl/buildLpwSearchUrl already correctly scope to the
+    // Commercial category (168 raw candidates); the removed text filter was
+    // discarding 163 of them, nearly all genuinely commercial listings that
+    // simply didn't use the word "office". District/dealType/city/keyword
+    // above are all real, additional signals the sites don't already encode
+    // in the URL — property type beyond the four broad buckets isn't.
     // LankaPropertyWeb has no keyword query param that actually narrows
     // results (verified live — it silently ignores ?q=/?search=), so a
     // typed keyword was previously dropped entirely for that source. Only
