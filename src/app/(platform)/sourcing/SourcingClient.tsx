@@ -20,11 +20,14 @@ type ImportTarget = { url: string; source: "ikman" | "lankapropertyweb" } & Part
 
 type AppliedFilters = {
   district: string;
+  city: string;
   propertyType: string;
   dealType: "BUY" | "RENT" | "LEASE";
   keyword: string;
   priceMin: string;
   priceMax: string;
+  sizeMin: string;
+  sizeMax: string;
   bedrooms: string;
   postedWithinDays: string;
 };
@@ -51,9 +54,12 @@ export function SourcingClient({
   const [keyword, setKeyword] = useState(initialKeyword);
   const [dealType, setDealType] = useState<"BUY" | "RENT" | "LEASE">(initialDealType);
   const [district, setDistrict] = useState(initialDistrict);
+  const [city, setCity] = useState("");
   const [propertyType, setPropertyType] = useState(initialPropertyType);
   const [priceMin, setPriceMin] = useState("");
   const [priceMax, setPriceMax] = useState("");
+  const [sizeMin, setSizeMin] = useState("");
+  const [sizeMax, setSizeMax] = useState("");
   const [bedrooms, setBedrooms] = useState("");
   const [postedWithinDays, setPostedWithinDays] = useState("");
   const [moreFilters, setMoreFilters] = useState(false);
@@ -78,13 +84,16 @@ export function SourcingClient({
   // request always builds from `next`, never from the (possibly still
   // stale) state variables directly.
   function runSearch(overrides: Partial<AppliedFilters> = {}) {
-    const next: AppliedFilters = { district, propertyType, dealType, keyword, priceMin, priceMax, bedrooms, postedWithinDays, ...overrides };
+    const next: AppliedFilters = { district, city, propertyType, dealType, keyword, priceMin, priceMax, sizeMin, sizeMax, bedrooms, postedWithinDays, ...overrides };
     setDistrict(next.district);
+    setCity(next.city);
     setPropertyType(next.propertyType);
     setDealType(next.dealType);
     setKeyword(next.keyword);
     setPriceMin(next.priceMin);
     setPriceMax(next.priceMax);
+    setSizeMin(next.sizeMin);
+    setSizeMax(next.sizeMax);
     setBedrooms(next.bedrooms);
     setPostedWithinDays(next.postedWithinDays);
     setSearched(true);
@@ -96,9 +105,12 @@ export function SourcingClient({
         keyword: next.keyword,
         dealType: next.dealType,
         district: next.district || undefined,
+        city: next.city || undefined,
         propertyType: next.propertyType || undefined,
         priceMin: next.priceMin ? Number(next.priceMin) : undefined,
         priceMax: next.priceMax ? Number(next.priceMax) : undefined,
+        sizeMin: next.sizeMin ? Number(next.sizeMin) : undefined,
+        sizeMax: next.sizeMax ? Number(next.sizeMax) : undefined,
         bedrooms: next.bedrooms ? Number(next.bedrooms) : undefined,
         postedWithinDays: next.postedWithinDays ? Number(next.postedWithinDays) : undefined,
       });
@@ -141,12 +153,17 @@ export function SourcingClient({
   const chips: { key: string; label: string; onRemove: () => void }[] = [];
   if (applied) {
     if (applied.district) chips.push({ key: "district", label: applied.district, onRemove: () => runSearch({ district: "" }) });
+    if (applied.city) chips.push({ key: "city", label: applied.city, onRemove: () => runSearch({ city: "" }) });
     if (applied.propertyType) chips.push({ key: "type", label: applied.propertyType, onRemove: () => runSearch({ propertyType: "" }) });
     chips.push({ key: "deal", label: DEAL_TYPE_LABEL[applied.dealType], onRemove: () => runSearch({ dealType: "RENT" }) });
     if (applied.keyword) chips.push({ key: "keyword", label: `"${applied.keyword}"`, onRemove: () => runSearch({ keyword: "" }) });
     if (applied.priceMin || applied.priceMax) {
       const label = `${applied.priceMin ? `Rs ${Number(applied.priceMin).toLocaleString()}` : "Rs 0"} – ${applied.priceMax ? `Rs ${Number(applied.priceMax).toLocaleString()}` : "no limit"}`;
       chips.push({ key: "price", label, onRemove: () => runSearch({ priceMin: "", priceMax: "" }) });
+    }
+    if (applied.sizeMin || applied.sizeMax) {
+      const label = `${applied.sizeMin ? `${Number(applied.sizeMin).toLocaleString()}` : "0"} – ${applied.sizeMax ? `${Number(applied.sizeMax).toLocaleString()} sqft` : "no limit sqft"}`;
+      chips.push({ key: "size", label, onRemove: () => runSearch({ sizeMin: "", sizeMax: "" }) });
     }
     if (applied.bedrooms) chips.push({ key: "beds", label: `${applied.bedrooms} bed`, onRemove: () => runSearch({ bedrooms: "" }) });
     if (applied.postedWithinDays) chips.push({ key: "posted", label: `Posted ≤ ${applied.postedWithinDays}d`, onRemove: () => runSearch({ postedWithinDays: "" }) });
@@ -181,6 +198,10 @@ export function SourcingClient({
             </select>
           </div>
           <div>
+            <label className="ir-label mb-1 block">City / area</label>
+            <input value={city} onChange={(e) => setCity(e.target.value)} placeholder="Nugegoda, Colombo 7…" className="ir-input" />
+          </div>
+          <div>
             <label className="ir-label mb-1 block">Property type</label>
             <select value={propertyType} onChange={(e) => setPropertyType(e.target.value)} className="ir-select">
               <option value="">Any</option>
@@ -193,7 +214,7 @@ export function SourcingClient({
           </div>
           <div className="flex items-end lg:col-span-2">
             <button type="button" onClick={() => setMoreFilters((v) => !v)} className="text-xs font-medium text-ir-gold-dark hover:underline">
-              {moreFilters ? "Fewer filters" : "+ Price, bedrooms, posted date"}
+              {moreFilters ? "Fewer filters" : "+ Price, size, bedrooms, posted date"}
             </button>
           </div>
         </div>
@@ -209,6 +230,14 @@ export function SourcingClient({
               <input type="number" value={priceMax} onChange={(e) => setPriceMax(e.target.value)} placeholder="No limit" className="ir-input" />
             </div>
             <div>
+              <label className="ir-label mb-1 block">Min size (sqft)</label>
+              <input type="number" value={sizeMin} onChange={(e) => setSizeMin(e.target.value)} placeholder="0" className="ir-input" />
+            </div>
+            <div>
+              <label className="ir-label mb-1 block">Max size (sqft)</label>
+              <input type="number" value={sizeMax} onChange={(e) => setSizeMax(e.target.value)} placeholder="No limit" className="ir-input" />
+            </div>
+            <div>
               <label className="ir-label mb-1 block">Bedrooms</label>
               <input type="number" min="0" value={bedrooms} onChange={(e) => setBedrooms(e.target.value)} placeholder="Any" className="ir-input" />
             </div>
@@ -217,7 +246,7 @@ export function SourcingClient({
               <input type="number" min="1" value={postedWithinDays} onChange={(e) => setPostedWithinDays(e.target.value)} placeholder="Any time" className="ir-input" />
             </div>
             <p className="col-span-2 text-[0.65rem] text-black/35 sm:col-span-4">
-              Price/bedrooms/posted-date are read from each listing&apos;s own text, not a structured field either site exposes — best-effort: a result missing that detail is kept rather than hidden.
+              Price/bedrooms/posted-date are read from each listing&apos;s own text, not a structured field either site exposes — best-effort: a result missing that detail is kept rather than hidden. Size is also best-effort, and only ever present on LankaPropertyWeb results — ikman&apos;s search results don&apos;t carry a floor/land size at all, so a size filter never hides an ikman match.
             </p>
           </div>
         )}

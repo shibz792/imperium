@@ -76,11 +76,14 @@ export async function searchExternalListings(
 
   const filtered = applyFilters(results, {
     district: input.district,
+    city: input.city,
     propertyType: input.propertyType,
     dealType: input.dealType,
     keyword: input.keyword,
     priceMin: input.priceMin,
     priceMax: input.priceMax,
+    sizeMin: input.sizeMin,
+    sizeMax: input.sizeMax,
     bedrooms: input.bedrooms,
     postedWithinDays: input.postedWithinDays,
   });
@@ -196,6 +199,10 @@ export async function registerSourcedListing(
       sourceUrl: url,
       title: fields.title || `${fields.subtype ?? "Property"} in ${fields.city ?? "location tbc"}`,
       price: display.price,
+      // Prefer the AI-drafted, human-reviewed number over re-parsing the
+      // raw scraped price string — it's already been through the same
+      // review step everything else on this row went through.
+      priceValue: fields.totalPrice ?? fields.monthlyRental ?? fields.annualLeaseValue ?? parsePriceToNumber(display.price),
       location: display.location ?? fields.city,
       size: display.size,
       imgUrl: display.imgUrl,

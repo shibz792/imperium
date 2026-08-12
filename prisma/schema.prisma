@@ -401,6 +401,11 @@ model SourcedListing {
   sourceUrl     String   @unique
   title         String
   price         String?
+  // Parsed from `price` at registration time (parsePriceToNumber) — the
+  // display string alone can't be sorted numerically ("Rs 40.25 Million"
+  // vs "Rs 9,500,000"), so this is what the Registered Listings sort
+  // control actually orders by.
+  priceValue    Float?
   location      String?
   size          String?
   imgUrl        String?

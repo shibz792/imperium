@@ -73,11 +73,18 @@ export type SourcingResult = {
 
 export type SourcingFilters = {
   district?: string;
+  // A district is one of this app's fixed 20; a city/area is free text
+  // ("Nugegoda", "Colombo 7") checked only against the location field, not
+  // the whole title — narrower and more literal than typing the same word
+  // into Keyword, which also matches anywhere in the title.
+  city?: string;
   propertyType?: string;
   dealType?: "BUY" | "RENT" | "LEASE";
   keyword?: string;
   priceMin?: number;
   priceMax?: number;
+  sizeMin?: number;
+  sizeMax?: number;
   bedrooms?: number;
   postedWithinDays?: number;
 };
@@ -106,6 +113,32 @@ export function parsePriceToNumber(price: string | undefined): number | undefine
   if (unit === "million" || unit === "mn" || unit === "m") return n * 1_000_000;
   if (unit === "cr" || unit === "crore") return n * 10_000_000;
   return n;
+}
+
+// LankaPropertyWeb's own "size" text ("3500 sqft", "10 Perches", "1.5
+// Acres") — converted to a common sqft basis so a single min/max filter
+// can compare across whatever unit a given listing happened to use.
+// ikman's search summary never carries a floor/land size at all (its
+// "size" field is really the bedroom/bathroom count text — see
+// mapIkmanAd) — this simply returns undefined for that, and the filter
+// below keeps such a result rather than penalizing it for a field ikman
+// never gave it a chance to report.
+const SQFT_PER_PERCH = 272.25;
+const SQFT_PER_ACRE = 43_560;
+const SQFT_PER_SQM = 10.7639;
+
+export function parseSizeToSqft(size: string | undefined): number | undefined {
+  if (!size) return undefined;
+  const cleaned = size.replace(/,/g, "");
+  const match = cleaned.match(/(\d+(?:\.\d+)?)\s*(sq\.?\s?ft|sqft|square\s?feet|perch(?:es)?|acre(?:s)?|sq\.?\s?m\b|sqm|square\s?met(?:er|re)s?)/i);
+  if (!match) return undefined;
+  const n = Number(match[1]);
+  if (Number.isNaN(n)) return undefined;
+  const unit = match[2].toLowerCase().replace(/[.\s]/g, "");
+  if (unit.startsWith("perch")) return n * SQFT_PER_PERCH;
+  if (unit.startsWith("acre")) return n * SQFT_PER_ACRE;
+  if (unit.startsWith("sqm") || unit.startsWith("squaremet")) return n * SQFT_PER_SQM;
+  return n; // sqft / square feet variants
 }
 
 // Neither site's search-result markup carries a separate bedroom-count
@@ -185,6 +218,10 @@ export function applyFilters(results: SourcingResult[], filters: SourcingFilters
       if (!wantSale && !RENT_AD_TYPES.has(r.adType)) return false;
     }
     if (filters.district && !locationMatchesDistrict(r.location, filters.district)) return false;
+    if (filters.city?.trim()) {
+      const hay = `${r.location ?? ""} ${r.title}`.toLowerCase();
+      if (!hay.includes(filters.city.trim().toLowerCase())) return false;
+    }
     if (filters.propertyType) {
       const hay = `${r.location ?? ""} ${r.title}`.toLowerCase();
       if (!propertyTypeMatches(hay, filters.propertyType)) return false;
@@ -207,6 +244,15 @@ export function applyFilters(results: SourcingResult[], filters: SourcingFilters
         if (filters.priceMax != null && price > filters.priceMax) return false;
       }
       // price didn't parse — keep it rather than hide a possibly-real match
+    }
+    if (filters.sizeMin != null || filters.sizeMax != null) {
+      const sqft = parseSizeToSqft(r.size);
+      if (sqft != null) {
+        if (filters.sizeMin != null && sqft < filters.sizeMin) return false;
+        if (filters.sizeMax != null && sqft > filters.sizeMax) return false;
+      }
+      // size didn't parse (or, for ikman, was never a floor size to begin
+      // with) — keep it rather than hide a possibly-real match
     }
     if (filters.bedrooms != null) {
       const beds = r.bedrooms ?? parseBedroomsFromTitle(r.title);

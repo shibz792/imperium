@@ -5,10 +5,13 @@ import { PageHeader, Tabs } from "@/components/ui";
 import { SourcingClient } from "./SourcingClient";
 import { RegisteredListings } from "./RegisteredListings";
 
-export default async function SourcingPage({ searchParams }: { searchParams: Promise<{ tab?: string }> }) {
+export default async function SourcingPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   await requireRole(SOURCING_ROLES);
   const sp = await searchParams;
   const tab = sp.tab === "registered" ? "registered" : "search";
+  // The tab badge always shows the true total, not the filtered count —
+  // filtering the registered list shouldn't make the tab itself look like
+  // there's less to review than there really is.
   const registeredCount = await prisma.sourcedListing.count();
 
   return (
@@ -26,7 +29,7 @@ export default async function SourcingPage({ searchParams }: { searchParams: Pro
         active={tab}
         basePath="/sourcing"
       />
-      {tab === "search" ? <SourcingClient /> : <RegisteredListings />}
+      {tab === "search" ? <SourcingClient /> : <RegisteredListings searchParams={sp} />}
     </div>
   );
 }
