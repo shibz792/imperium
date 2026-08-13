@@ -73,15 +73,14 @@ async function enrichResults(results: SourcingResult[]): Promise<SourcingSearchR
 // site didn't support them. SourcingClient now searches one site at a
 // time, its filter panel only ever showing what that site can actually do.
 export async function searchIkmanListings(
-  input: { dealType: "BUY" | "RENT" | "LEASE"; keyword: string; district?: string; city?: string; propertyType?: string } & SourcingFilters,
+  input: { dealType: "BUY" | "RENT" | "LEASE"; keyword: string; district?: string; city?: string; propertyType?: string; commercialType?: string } & SourcingFilters,
 ): Promise<{ results: SourcingSearchResult[]; error?: string }> {
   await requireUser();
   try {
-    const raw = await searchIkman({ dealType: input.dealType, district: input.district, propertyType: input.propertyType, keyword: input.keyword });
+    const raw = await searchIkman({ dealType: input.dealType, district: input.district, propertyType: input.propertyType, commercialType: input.commercialType, keyword: input.keyword });
     const filtered = applyFilters(raw, {
       district: input.district,
       city: input.city,
-      propertyType: input.propertyType,
       dealType: input.dealType,
       priceMin: input.priceMin,
       priceMax: input.priceMax,
@@ -103,7 +102,6 @@ export async function searchLpwListings(
     const filtered = applyFilters(raw, {
       district: input.district,
       city: input.city,
-      propertyType: input.propertyType,
       dealType: input.dealType,
       keyword: input.keyword,
       priceMin: input.priceMin,

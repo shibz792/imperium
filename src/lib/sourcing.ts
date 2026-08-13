@@ -78,7 +78,6 @@ export type SourcingFilters = {
   // the whole title — narrower and more literal than typing the same word
   // into Keyword, which also matches anywhere in the title.
   city?: string;
-  propertyType?: string;
   dealType?: "BUY" | "RENT" | "LEASE";
   keyword?: string;
   priceMin?: number;
@@ -319,78 +318,54 @@ function extractJsAssignment(html: string, marker: string): unknown | null {
   }
 }
 
-// Every internal-only property subtype this app has, mapped to ikman's own
-// (much coarser) category slugs — verified against ikman's live category
-// tree, not guessed. ikman has no distinct category for most of this app's
-// industrial/land nuance (a "Distribution Centre" or "Yard" isn't a real
-// ikman category), so those fall back to the closest real bucket
-// (Commercial Property) rather than a made-up slug that would 404.
-const IKMAN_CATEGORY_BY_SUBTYPE: Record<string, { sale: string; rent: string }> = {
-  House: { sale: "houses-for-sale", rent: "house-rentals" },
-  Villa: { sale: "houses-for-sale", rent: "house-rentals" },
-  "Luxury Residence": { sale: "houses-for-sale", rent: "house-rentals" },
-  "Gated Community Home": { sale: "houses-for-sale", rent: "house-rentals" },
-  "Development Project": { sale: "houses-for-sale", rent: "house-rentals" },
-  "Holiday Home": { sale: "houses-for-sale", rent: "holiday-short-term-rental" },
-  Apartment: { sale: "apartments-for-sale", rent: "apartment-rentals" },
-  // ikman has no "sell an annexe/room" category — House is the closest
-  // real sale bucket; the rental side has a dedicated category, used as-is.
-  Annexe: { sale: "houses-for-sale", rent: "room-annex-rentals" },
-  Room: { sale: "houses-for-sale", rent: "room-annex-rentals" },
-  Office: { sale: "commercial-properties-for-sale", rent: "commercial-property-rentals" },
-  "Retail Space": { sale: "commercial-properties-for-sale", rent: "commercial-property-rentals" },
-  "Commercial Building": { sale: "commercial-properties-for-sale", rent: "commercial-property-rentals" },
-  Showroom: { sale: "commercial-properties-for-sale", rent: "commercial-property-rentals" },
-  Restaurant: { sale: "commercial-properties-for-sale", rent: "commercial-property-rentals" },
-  Hotel: { sale: "commercial-properties-for-sale", rent: "commercial-property-rentals" },
-  Guesthouse: { sale: "commercial-properties-for-sale", rent: "commercial-property-rentals" },
-  "Mixed-Use Development": { sale: "commercial-properties-for-sale", rent: "commercial-property-rentals" },
-  Warehouse: { sale: "commercial-properties-for-sale", rent: "commercial-property-rentals" },
-  Factory: { sale: "commercial-properties-for-sale", rent: "commercial-property-rentals" },
-  "Cold Storage Facility": { sale: "commercial-properties-for-sale", rent: "commercial-property-rentals" },
-  "Distribution Centre": { sale: "commercial-properties-for-sale", rent: "commercial-property-rentals" },
-  Yard: { sale: "commercial-properties-for-sale", rent: "commercial-property-rentals" },
-  "Logistics Facility": { sale: "commercial-properties-for-sale", rent: "commercial-property-rentals" },
-  "Industrial Land": { sale: "land-for-sale", rent: "land-for-rent" },
-  "Residential Land": { sale: "land-for-sale", rent: "land-for-rent" },
-  "Commercial Land": { sale: "land-for-sale", rent: "land-for-rent" },
-  "Agricultural Land": { sale: "land-for-sale", rent: "land-for-rent" },
-  Estate: { sale: "land-for-sale", rent: "land-for-rent" },
-  Plantation: { sale: "land-for-sale", rent: "land-for-rent" },
-  "Development Land": { sale: "land-for-sale", rent: "land-for-rent" },
-};
+// ---------------------------------------------------------------------------
+// ikman.lk's own, real property-type taxonomy — not this app's invented
+// vocabulary mapped onto it. Verified against ikman's live category tree
+// (serp.categories in its own page payload): these are its actual category
+// names, each with its own separate sale/rent slug where ikman itself
+// splits them that way (a listing is filed under "Houses For Sale" or
+// "House Rentals" — ikman has no single "Houses" category with a deal-type
+// flag). Room & Annex and Holiday & Short-Term are real ikman categories
+// too, but rental-only on ikman's own side — no sale equivalent exists, so
+// saleSlug is left unset and the UI hides them when Buy is selected.
+// ---------------------------------------------------------------------------
 
-// ikman's commercial-properties-for-sale/-rentals category (939/940) has no
-// child categories, but DOES carry a real per-listing "item_type" facet
-// (Building/Hotel/Warehouse-Storage/Office/Shop/Factory-Workshop/
-// Restaurant/Other) — found in its own dynamic-filters payload. That facet
-// only drives a client-side JS filter, though (verified live:
+export type IkmanPropertyType = "houses" | "apartments" | "land" | "commercial" | "room-annex" | "holiday-short-term";
+
+export const IKMAN_PROPERTY_TYPES: { value: IkmanPropertyType; label: string; saleSlug?: string; rentSlug?: string }[] = [
+  { value: "houses", label: "Houses", saleSlug: "houses-for-sale", rentSlug: "house-rentals" },
+  { value: "apartments", label: "Apartments", saleSlug: "apartments-for-sale", rentSlug: "apartment-rentals" },
+  { value: "land", label: "Land", saleSlug: "land-for-sale", rentSlug: "land-for-rent" },
+  { value: "commercial", label: "Commercial Properties", saleSlug: "commercial-properties-for-sale", rentSlug: "commercial-property-rentals" },
+  { value: "room-annex", label: "Room & Annex", rentSlug: "room-annex-rentals" },
+  { value: "holiday-short-term", label: "Holiday & Short-Term", rentSlug: "holiday-short-term-rental" },
+];
+
+// Commercial Properties has no child categories on ikman, but DOES carry a
+// real per-listing "item_type" facet (Building/Hotel/Warehouse-Storage/
+// Office/Shop/Factory-Workshop/Restaurant/Other) — found in its own
+// dynamic-filters payload, ikman's own vocabulary, not this app's. That
+// facet only drives a client-side JS filter, though (verified live:
 // ?item_type=office left postedAdCount completely unchanged), so it can't
 // be used as a URL param the way category/location/page can. What DOES
 // work: feeding the same word into ikman's own `query` full-text search,
 // which searches each ad's full description, not just its title — this
-// was measured directly (a `query=office` search scoped to the Commercial
-// category returned 26 targeted, genuinely office-related results, a real
-// middle ground between the unfiltered category's ~670 and the 5 that
-// survived this app's old brittle title-only regex). No such facet exists
-// for houses-for-sale or land-for-sale (checked their dynamic filters too
-// — bedrooms/bathrooms/price/size only) — ikman genuinely cannot
-// distinguish a Villa from a House, or Agricultural Land from Residential
-// Land, so those subtypes get no hint and just trust the category.
-const IKMAN_ITEM_TYPE_HINT: Record<string, string> = {
-  Office: "office",
-  "Retail Space": "shop",
-  "Commercial Building": "building",
-  Showroom: "shop",
-  Restaurant: "restaurant",
-  Hotel: "hotel",
-  Guesthouse: "hotel",
-  Warehouse: "warehouse",
-  Factory: "factory",
-  "Cold Storage Facility": "warehouse",
-  "Distribution Centre": "warehouse",
-  "Logistics Facility": "warehouse",
-};
+// was measured directly (a `query=office` search scoped to Commercial
+// Properties returned 26 targeted, genuinely office-related results, a
+// real middle ground between the unfiltered category's ~670 and a brittle
+// title-only regex's 5). No equivalent facet exists for Houses or Land
+// (checked their dynamic filters too — bedrooms/bathrooms/price/size
+// only) — ikman genuinely has no further breakdown there.
+export const IKMAN_COMMERCIAL_TYPES: { value: string; label: string }[] = [
+  { value: "office", label: "Office" },
+  { value: "shop", label: "Shop" },
+  { value: "warehouse_storage", label: "Warehouse / Storage" },
+  { value: "factory_workshop", label: "Factory / Workshop" },
+  { value: "hotel", label: "Hotel" },
+  { value: "restaurant", label: "Restaurant" },
+  { value: "building", label: "Building" },
+  { value: "other", label: "Other" },
+];
 
 // ikman's location slugs are simply the district name, lowercased and
 // space-hyphenated ("Nuwara Eliya" → "nuwara-eliya") — verified against
@@ -399,17 +374,26 @@ function ikmanLocationSlug(district: string): string {
   return district.toLowerCase().replace(/\s+/g, "-");
 }
 
-export function buildIkmanSearchUrl(opts: { dealType: "BUY" | "RENT" | "LEASE"; district?: string; propertyType?: string; keyword?: string; page?: number }): string {
+export function buildIkmanSearchUrl(opts: {
+  dealType: "BUY" | "RENT" | "LEASE";
+  district?: string;
+  propertyType?: string;
+  commercialType?: string;
+  keyword?: string;
+  page?: number;
+}): string {
   const locationSlug = opts.district ? ikmanLocationSlug(opts.district) : "sri-lanka";
-  const cat = opts.propertyType ? IKMAN_CATEGORY_BY_SUBTYPE[opts.propertyType] : undefined;
+  const isSale = opts.dealType === "BUY";
+  const cat = IKMAN_PROPERTY_TYPES.find((t) => t.value === opts.propertyType);
   // "property" is the live (non-deactivated) umbrella category — every
-  // subtype and deal type mixed together. Only reached when the user left
-  // property type as "Any"; applyFilters' adType check is the safety net
-  // for deal-type accuracy in that one case, since no URL segment can
-  // narrow an umbrella category by sale-vs-rent on its own.
-  const categorySlug = cat ? (opts.dealType === "BUY" ? cat.sale : cat.rent) : "property";
-  const itemTypeHint = opts.propertyType ? IKMAN_ITEM_TYPE_HINT[opts.propertyType] : undefined;
-  const query = [opts.keyword?.trim(), itemTypeHint].filter(Boolean).join(" ");
+  // type and deal type mixed together. Reached when the user left property
+  // type as "Any", or picked a rental-only type (Room & Annex, Holiday &
+  // Short-Term) while Deal type is Buy — applyFilters' adType check is the
+  // safety net for deal-type accuracy in that case, since no URL segment
+  // can narrow an umbrella category by sale-vs-rent on its own.
+  const categorySlug = (isSale ? cat?.saleSlug : cat?.rentSlug) ?? "property";
+  const commercialHint = opts.propertyType === "commercial" && opts.commercialType ? IKMAN_COMMERCIAL_TYPES.find((t) => t.value === opts.commercialType)?.label.toLowerCase() : undefined;
+  const query = [opts.keyword?.trim(), commercialHint].filter(Boolean).join(" ");
   const params = new URLSearchParams();
   if (query) params.set("query", query);
   if (opts.page && opts.page > 1) params.set("page", String(opts.page));
@@ -451,7 +435,7 @@ function parseIkmanAds(html: string): Array<Record<string, unknown>> {
 // applyFilters ever runs.
 const IKMAN_PAGES = 3;
 
-export async function searchIkman(opts: { dealType: "BUY" | "RENT" | "LEASE"; district?: string; propertyType?: string; keyword?: string }): Promise<SourcingResult[]> {
+export async function searchIkman(opts: { dealType: "BUY" | "RENT" | "LEASE"; district?: string; propertyType?: string; commercialType?: string; keyword?: string }): Promise<SourcingResult[]> {
   const first = await fetchHtml(buildIkmanSearchUrl(opts));
   let baseOpts = opts;
   let html = first.html;
@@ -528,100 +512,90 @@ export async function searchIkman(opts: { dealType: "BUY" | "RENT" | "LEASE"; di
 // principle as the rest of this file.
 // ---------------------------------------------------------------------------
 
-// Only the House-family and Annexe/Room now go through this coarse map —
-// every commercial/industrial subtype below routes through
-// LPW_COMMERCIAL_SUB_SLUG's real dedicated category pages instead (see
-// that map's own comment for why). ikman genuinely can't tell a Villa from
-// a House either (checked its dynamic filters — bedrooms/bathrooms/price/
-// size only, no house-type facet), so there's no equivalent finer routing
-// possible for this bucket on either site — this is the real ceiling.
-const LPW_LEGACY_TYPE_SLUG: Record<string, string> = {
-  House: "House",
-  Villa: "Villa",
-  "Luxury Residence": "House",
-  "Gated Community Home": "House",
-  "Development Project": "House",
-  "Holiday Home": "Villa",
-  Apartment: "Apartment",
-  // Only the rentals namespace has real Annexe/Room categories; the sale
-  // side falls back to House, the closest real sale category.
-  Annexe: "House",
-  Room: "House",
-};
-// Rental-only overrides — real categories that only exist under
-// /rentals/…, verified against that namespace's own footer links.
-const LPW_RENTAL_TYPE_SLUG: Record<string, string> = { Annexe: "Annexe", Room: "Room" };
+// LankaPropertyWeb's own, real property-type taxonomy — not this app's
+// invented vocabulary mapped onto it. Every value below was found by
+// crawling the site's own category links (footer nav, /sale/commercial/'s
+// own sub-category links, its homepage's "browse land by type" links) and
+// then individually confirmed live — a real, distinct property count, not
+// a silent fallback to a generic listing page. `sale`/`rent` record which
+// deal type that category genuinely exists under on LPW's own site (e.g.
+// Annexe/Room/Hostel are rental-only there — no sale equivalent exists;
+// every Land subtype is sale-only — no working land-rental namespace was
+// found, /land/lease-... 404s everywhere it was tried).
+type LpwTypeDef = { value: string; label: string; group: string; sale: boolean; rent: boolean } & (
+  | { kind: "index"; type: string }
+  | { kind: "land"; type: string }
+  | { kind: "commercial-sub"; slug: string }
+);
 
-const LPW_LAND_SUBTYPES = new Set(["Residential Land", "Commercial Land", "Industrial Land", "Agricultural Land", "Estate", "Plantation", "Development Land"]);
-
-// LankaPropertyWeb's real commercial sub-taxonomy — found by crawling
-// /sale/commercial/'s own category links, not guessed, then each slug
-// individually confirmed live (real, distinct property counts, not a
-// silent fallback to the generic commercial page). Far more granular than
-// the coarse "Commercial" bucket this app originally mapped everything to:
-// building, factory, guest-house, hospital, hotel, multipurpose, office,
-// restaurant, shop, shopping-mall, warehouse are all real, separately
-// browsable categories on this site. Cold Storage/Distribution/Logistics/
-// Yard have no dedicated page of their own (confirmed — those slugs
-// silently serve the generic commercial listing instead of a real
-// sub-category), so they fall back to "warehouse" as the closest real
-// bucket rather than the much broader, unrelated-heavy "Commercial" one.
-const LPW_COMMERCIAL_SUB_SLUG: Record<string, string> = {
-  Office: "office",
-  "Retail Space": "shop",
-  "Commercial Building": "building",
-  Showroom: "shop",
-  Restaurant: "restaurant",
-  Hotel: "hotel",
-  Guesthouse: "guest-house",
-  "Mixed-Use Development": "multipurpose",
-  Warehouse: "warehouse",
-  Factory: "factory",
-  "Cold Storage Facility": "warehouse",
-  "Distribution Centre": "warehouse",
-  Yard: "warehouse",
-  "Logistics Facility": "warehouse",
-};
+export const LPW_PROPERTY_TYPES: LpwTypeDef[] = [
+  { value: "house", label: "House", group: "Houses", kind: "index", type: "House", sale: true, rent: true },
+  { value: "villa", label: "Villa", group: "Houses", kind: "index", type: "Villa", sale: true, rent: true },
+  { value: "bungalow", label: "Bungalow", group: "Houses", kind: "index", type: "Bungalow", sale: true, rent: true },
+  { value: "studio", label: "Studio / Bedsit", group: "Houses", kind: "index", type: "Studio", sale: true, rent: true },
+  { value: "apartment", label: "Apartment", group: "Apartments", kind: "index", type: "Apartment", sale: true, rent: true },
+  { value: "annexe", label: "Annexe", group: "Rentals only", kind: "index", type: "Annexe", sale: false, rent: true },
+  { value: "room", label: "Room", group: "Rentals only", kind: "index", type: "Room", sale: false, rent: true },
+  { value: "hostel", label: "Hostel", group: "Rentals only", kind: "index", type: "Hostel", sale: false, rent: true },
+  { value: "land", label: "Land (any type)", group: "Land — sale only", kind: "land", type: "all", sale: true, rent: false },
+  { value: "land-bare", label: "Bare Land", group: "Land — sale only", kind: "land", type: "Bare+land", sale: true, rent: false },
+  { value: "land-beachfront", label: "Beachfront Land", group: "Land — sale only", kind: "land", type: "Beachfront+land", sale: true, rent: false },
+  { value: "land-cinnamon", label: "Cinnamon Estate Land", group: "Land — sale only", kind: "land", type: "Cinnamon+land", sale: true, rent: false },
+  { value: "land-coconut", label: "Coconut Estate Land", group: "Land — sale only", kind: "land", type: "Coconut+land", sale: true, rent: false },
+  { value: "land-cultivated", label: "Cultivated / Agriculture Land", group: "Land — sale only", kind: "land", type: "Cultivated+land", sale: true, rent: false },
+  { value: "land-with-house", label: "Land with House", group: "Land — sale only", kind: "land", type: "Land+with+house", sale: true, rent: false },
+  { value: "land-paddy", label: "Paddy (Rice) Land", group: "Land — sale only", kind: "land", type: "Paddy+land", sale: true, rent: false },
+  { value: "land-rubber", label: "Rubber Estate Land", group: "Land — sale only", kind: "land", type: "Rubber+land", sale: true, rent: false },
+  { value: "land-tea", label: "Tea Estate Land", group: "Land — sale only", kind: "land", type: "Tea+land", sale: true, rent: false },
+  { value: "land-waterfront", label: "Waterfront Land", group: "Land — sale only", kind: "land", type: "Waterfront+land", sale: true, rent: false },
+  { value: "commercial", label: "Commercial (any type)", group: "Commercial", kind: "index", type: "Commercial", sale: true, rent: true },
+  { value: "commercial-building", label: "Building", group: "Commercial", kind: "commercial-sub", slug: "building", sale: true, rent: true },
+  { value: "commercial-factory", label: "Factory", group: "Commercial", kind: "commercial-sub", slug: "factory", sale: true, rent: true },
+  { value: "commercial-guest-house", label: "Guest House", group: "Commercial", kind: "commercial-sub", slug: "guest-house", sale: true, rent: true },
+  { value: "commercial-hotel", label: "Hotel", group: "Commercial", kind: "commercial-sub", slug: "hotel", sale: true, rent: true },
+  { value: "commercial-multipurpose", label: "Multipurpose", group: "Commercial", kind: "commercial-sub", slug: "multipurpose", sale: true, rent: true },
+  { value: "commercial-office", label: "Office", group: "Commercial", kind: "commercial-sub", slug: "office", sale: true, rent: true },
+  { value: "commercial-shop", label: "Shop", group: "Commercial", kind: "commercial-sub", slug: "shop", sale: true, rent: true },
+  { value: "commercial-warehouse", label: "Warehouse", group: "Commercial", kind: "commercial-sub", slug: "warehouse", sale: true, rent: true },
+  { value: "commercial-restaurant", label: "Restaurant", group: "Commercial", kind: "commercial-sub", slug: "restaurant", sale: true, rent: true },
+  { value: "commercial-hospital", label: "Hospital", group: "Commercial — sale only", kind: "commercial-sub", slug: "hospital", sale: true, rent: false },
+  { value: "commercial-shopping-mall", label: "Shopping Mall", group: "Commercial — sale only", kind: "commercial-sub", slug: "shopping-mall", sale: true, rent: false },
+  { value: "commercial-coworking", label: "Co-working Space", group: "Commercial — rent only", kind: "commercial-sub", slug: "coworking", sale: false, rent: true },
+  { value: "commercial-other", label: "Other Commercial", group: "Commercial — rent only", kind: "commercial-sub", slug: "other", sale: false, rent: true },
+];
 
 function lpwLocationSegment(district: string | undefined): string {
   return district === "Colombo" ? "Colombo+All_0" : "all";
 }
 
-type LpwRoute = { kind: "index"; base: "sale" | "rentals"; type: string } | { kind: "land" } | { kind: "commercial-sub"; base: "sale" | "rentals"; slug: string };
-
-function lpwRoute(opts: { dealType: "BUY" | "RENT" | "LEASE"; propertyType?: string }): LpwRoute {
-  const isRent = opts.dealType !== "BUY";
-  if (opts.propertyType && LPW_LAND_SUBTYPES.has(opts.propertyType)) return { kind: "land" };
-  if (opts.propertyType && LPW_COMMERCIAL_SUB_SLUG[opts.propertyType]) {
-    return { kind: "commercial-sub", base: isRent ? "rentals" : "sale", slug: LPW_COMMERCIAL_SUB_SLUG[opts.propertyType] };
-  }
-  const type = isRent ? (LPW_RENTAL_TYPE_SLUG[opts.propertyType ?? ""] ?? LPW_LEGACY_TYPE_SLUG[opts.propertyType ?? ""] ?? "all") : (LPW_LEGACY_TYPE_SLUG[opts.propertyType ?? ""] ?? "all");
-  return { kind: "index", base: isRent ? "rentals" : "sale", type };
-}
-
 export function buildLpwSearchUrl(opts: { dealType: "BUY" | "RENT" | "LEASE"; district?: string; propertyType?: string; page?: number }): string {
   const loc = lpwLocationSegment(opts.district);
+  const isRent = opts.dealType !== "BUY";
   const page = opts.page ?? 1;
-  const route = lpwRoute(opts);
+  const def = LPW_PROPERTY_TYPES.find((t) => t.value === opts.propertyType);
+  // A def that doesn't genuinely exist for the selected deal type (picked
+  // via a stale URL or Matchmaker prefill, since the UI itself hides these
+  // combinations) falls through to the generic index below rather than
+  // requesting a route this site doesn't have.
+  const validDef = def && ((isRent && def.rent) || (!isRent && def.sale)) ? def : undefined;
 
-  if (route.kind === "land") {
-    // No working land-rental namespace was found live (/land/lease-...
-    // 404s) — land searches are sale-only regardless of dealType.
-    const params = new URLSearchParams({ search: "1", location: loc, "property-type": "all" });
+  if (validDef?.kind === "land") {
+    const params = new URLSearchParams({ search: "1", location: loc, "property-type": validDef.type });
     if (page > 1) params.set("page", String(page));
     return `https://www.lankapropertyweb.com/land/index.php?${params.toString()}`;
   }
-  if (route.kind === "commercial-sub") {
+  if (validDef?.kind === "commercial-sub") {
     // This namespace's location scoping wasn't verified beyond Colombo
     // live, so it's requested nationwide and left to applyFilters' district
     // check — safer than a guessed path segment that might silently 404
     // or silently mis-scope.
     const qs = page > 1 ? `?page=${page}` : "";
-    return `https://www.lankapropertyweb.com/${route.base}/commercial/${route.slug}/${qs}`;
+    return `https://www.lankapropertyweb.com/${isRent ? "rentals" : "sale"}/commercial/${validDef.slug}/${qs}`;
   }
-  const params = new URLSearchParams({ location: loc, "property-type": route.type, searchbox: opts.district ?? "Sri Lanka" });
+  const type = validDef?.kind === "index" ? validDef.type : "all";
+  const params = new URLSearchParams({ location: loc, "property-type": type, searchbox: opts.district ?? "Sri Lanka" });
   if (page > 1) params.set("page", String(page));
-  return `https://www.lankapropertyweb.com/${route.base}/index.php?${params.toString()}`;
+  return `https://www.lankapropertyweb.com/${isRent ? "rentals" : "sale"}/index.php?${params.toString()}`;
 }
 
 function parseLpwListings(html: string): SourcingResult[] {

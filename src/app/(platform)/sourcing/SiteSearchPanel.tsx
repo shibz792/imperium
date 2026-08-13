@@ -4,7 +4,8 @@ import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { Search, Download, Check, Loader2, ExternalLink, UserPlus, CheckCircle2, ImageOff, SearchX, ArrowUpDown, Clock, X } from "lucide-react";
 import { searchIkmanListings, searchLpwListings, extractContactFromListing, saveOutsourcedContact, type SourcingSearchResult } from "./actions";
-import { ALL_DISTRICTS, ALL_CITIES, SRI_LANKA_GEOGRAPHY, PROPERTY_SUBTYPES } from "@/lib/locations";
+import { ALL_DISTRICTS, ALL_CITIES, SRI_LANKA_GEOGRAPHY } from "@/lib/locations";
+import { IKMAN_PROPERTY_TYPES, IKMAN_COMMERCIAL_TYPES, LPW_PROPERTY_TYPES } from "@/lib/sourcing";
 
 const SOURCE_LABEL: Record<string, string> = { ikman: "ikman.lk", lankapropertyweb: "LankaPropertyWeb" };
 const DEAL_TYPE_LABEL: Record<string, string> = { BUY: "Buy", RENT: "Rent", LEASE: "Lease" };
@@ -20,6 +21,7 @@ type AppliedFilters = {
   district: string;
   city: string;
   propertyType: string;
+  commercialType: string;
   dealType: "BUY" | "RENT" | "LEASE";
   keyword: string;
   priceMin: string;
@@ -64,6 +66,7 @@ export function SiteSearchPanel({
   const [district, setDistrict] = useState(initialDistrict);
   const [city, setCity] = useState("");
   const [propertyType, setPropertyType] = useState(initialPropertyType);
+  const [commercialType, setCommercialType] = useState("");
   const [priceMin, setPriceMin] = useState("");
   const [priceMax, setPriceMax] = useState("");
   const [sizeMin, setSizeMin] = useState("");
@@ -83,10 +86,11 @@ export function SiteSearchPanel({
   // request always builds from `next`, never from the (possibly still
   // stale) state variables directly.
   function runSearch(overrides: Partial<AppliedFilters> = {}) {
-    const next: AppliedFilters = { district, city, propertyType, dealType, keyword, priceMin, priceMax, sizeMin, sizeMax, bedrooms, postedWithinDays, ...overrides };
+    const next: AppliedFilters = { district, city, propertyType, commercialType, dealType, keyword, priceMin, priceMax, sizeMin, sizeMax, bedrooms, postedWithinDays, ...overrides };
     setDistrict(next.district);
     setCity(next.city);
     setPropertyType(next.propertyType);
+    setCommercialType(next.commercialType);
     setDealType(next.dealType);
     setKeyword(next.keyword);
     setPriceMin(next.priceMin);
@@ -97,20 +101,31 @@ export function SiteSearchPanel({
     setPostedWithinDays(next.postedWithinDays);
     setSearched(true);
     startTransition(async () => {
-      const search = isIkman ? searchIkmanListings : searchLpwListings;
-      const res = await search({
-        dealType: next.dealType,
-        keyword: next.keyword,
-        district: next.district || undefined,
-        city: next.city || undefined,
-        propertyType: next.propertyType || undefined,
-        priceMin: next.priceMin ? Number(next.priceMin) : undefined,
-        priceMax: next.priceMax ? Number(next.priceMax) : undefined,
-        sizeMin: next.sizeMin ? Number(next.sizeMin) : undefined,
-        sizeMax: next.sizeMax ? Number(next.sizeMax) : undefined,
-        bedrooms: next.bedrooms ? Number(next.bedrooms) : undefined,
-        postedWithinDays: next.postedWithinDays ? Number(next.postedWithinDays) : undefined,
-      });
+      const res = isIkman
+        ? await searchIkmanListings({
+            dealType: next.dealType,
+            keyword: next.keyword,
+            district: next.district || undefined,
+            city: next.city || undefined,
+            propertyType: next.propertyType || undefined,
+            commercialType: next.propertyType === "commercial" ? next.commercialType || undefined : undefined,
+            priceMin: next.priceMin ? Number(next.priceMin) : undefined,
+            priceMax: next.priceMax ? Number(next.priceMax) : undefined,
+            bedrooms: next.bedrooms ? Number(next.bedrooms) : undefined,
+            postedWithinDays: next.postedWithinDays ? Number(next.postedWithinDays) : undefined,
+          })
+        : await searchLpwListings({
+            dealType: next.dealType,
+            district: next.district || undefined,
+            city: next.city || undefined,
+            propertyType: next.propertyType || undefined,
+            keyword: next.keyword,
+            priceMin: next.priceMin ? Number(next.priceMin) : undefined,
+            priceMax: next.priceMax ? Number(next.priceMax) : undefined,
+            sizeMin: next.sizeMin ? Number(next.sizeMin) : undefined,
+            sizeMax: next.sizeMax ? Number(next.sizeMax) : undefined,
+            bedrooms: next.bedrooms ? Number(next.bedrooms) : undefined,
+          });
       setResults(res.results);
       setError(res.error ?? null);
       setApplied(next);
@@ -135,11 +150,46 @@ export function SiteSearchPanel({
     return SRI_LANKA_GEOGRAPHY.find((d) => d.district === district)?.cities ?? ALL_CITIES;
   }, [district]);
 
+  // Each site's own real category list — not this app's invented
+  // vocabulary — filtered to only the ones that genuinely exist for the
+  // currently-selected deal type on that site (ikman has no sale category
+  // for Room & Annex or Holiday & Short-Term; LankaPropertyWeb has no
+  // rental category for any Land type, and no sale category for
+  // Annexe/Room/Hostel/Co-working/Other). See sourcing.ts's own catalogs
+  // for exactly what was verified live on each site.
+  const isRentDeal = dealType !== "BUY";
+  const ikmanTypeOptions = useMemo(() => IKMAN_PROPERTY_TYPES.filter((t) => (isRentDeal ? t.rentSlug : t.saleSlug)), [isRentDeal]);
+  const lpwTypeOptions = useMemo(() => LPW_PROPERTY_TYPES.filter((t) => (isRentDeal ? t.rent : t.sale)), [isRentDeal]);
+  const lpwTypeGroups = useMemo(() => {
+    const groups = new Map<string, typeof lpwTypeOptions>();
+    for (const t of lpwTypeOptions) groups.set(t.group, [...(groups.get(t.group) ?? []), t]);
+    return [...groups.entries()];
+  }, [lpwTypeOptions]);
+
+  function handleDealTypeChange(next: "BUY" | "RENT" | "LEASE") {
+    setDealType(next);
+    const nextIsRent = next !== "BUY";
+    if (isIkman) {
+      const stillValid = IKMAN_PROPERTY_TYPES.find((t) => t.value === propertyType && (nextIsRent ? t.rentSlug : t.saleSlug));
+      if (!stillValid) setPropertyType("");
+    } else {
+      const stillValid = LPW_PROPERTY_TYPES.find((t) => t.value === propertyType && (nextIsRent ? t.rent : t.sale));
+      if (!stillValid) setPropertyType("");
+    }
+  }
+
   const chips: { key: string; label: string; onRemove: () => void }[] = [];
   if (applied) {
     if (applied.district) chips.push({ key: "district", label: applied.district, onRemove: () => runSearch({ district: "" }) });
     if (applied.city) chips.push({ key: "city", label: applied.city, onRemove: () => runSearch({ city: "" }) });
-    if (applied.propertyType) chips.push({ key: "type", label: applied.propertyType, onRemove: () => runSearch({ propertyType: "" }) });
+    if (applied.propertyType) {
+      const label = isIkman ? IKMAN_PROPERTY_TYPES.find((t) => t.value === applied.propertyType)?.label : LPW_PROPERTY_TYPES.find((t) => t.value === applied.propertyType)?.label;
+      chips.push({ key: "type", label: label ?? applied.propertyType, onRemove: () => runSearch({ propertyType: "", commercialType: "" }) });
+    }
+    if (isIkman && applied.propertyType === "commercial" && applied.commercialType) {
+      const label = IKMAN_COMMERCIAL_TYPES.find((t) => t.value === applied.commercialType)?.label;
+      chips.push({ key: "commercialType", label: label ?? applied.commercialType, onRemove: () => runSearch({ commercialType: "" }) });
+    }
     chips.push({ key: "deal", label: DEAL_TYPE_LABEL[applied.dealType], onRemove: () => runSearch({ dealType: "RENT" }) });
     if (applied.keyword) chips.push({ key: "keyword", label: `"${applied.keyword}"`, onRemove: () => runSearch({ keyword: "" }) });
     if (applied.priceMin || applied.priceMax) {
@@ -165,7 +215,7 @@ export function SiteSearchPanel({
           </div>
           <div>
             <label className="ir-label mb-1 block">Deal type</label>
-            <select value={dealType} onChange={(e) => setDealType(e.target.value as never)} className="ir-select">
+            <select value={dealType} onChange={(e) => handleDealTypeChange(e.target.value as never)} className="ir-select">
               <option value="BUY">Buy</option>
               <option value="RENT">Rent</option>
               <option value="LEASE">Lease</option>
@@ -188,10 +238,25 @@ export function SiteSearchPanel({
           </div>
           <div>
             <label className="ir-label mb-1 block">Property type</label>
-            <select value={propertyType} onChange={(e) => setPropertyType(e.target.value)} className="ir-select">
+            <select value={propertyType} onChange={(e) => { setPropertyType(e.target.value); setCommercialType(""); }} className="ir-select">
               <option value="">Any</option>
-              {Array.from(new Set(Object.values(PROPERTY_SUBTYPES).flat())).map((s) => <option key={s} value={s}>{s}</option>)}
+              {isIkman
+                ? ikmanTypeOptions.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)
+                : lpwTypeGroups.map(([group, types]) => (
+                    <optgroup key={group} label={group}>
+                      {types.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+                    </optgroup>
+                  ))}
             </select>
+            {/* ikman.lk's own Commercial Properties category has no sub-categories
+                of its own — this is its real per-listing "type" facet instead,
+                sent as a search-query hint (see IKMAN_COMMERCIAL_TYPES). */}
+            {isIkman && propertyType === "commercial" && (
+              <select value={commercialType} onChange={(e) => setCommercialType(e.target.value)} className="ir-select mt-1.5">
+                <option value="">Any commercial type</option>
+                {IKMAN_COMMERCIAL_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+              </select>
+            )}
           </div>
           <div className="flex items-end lg:col-span-3">
             <button type="button" onClick={() => setMoreFilters((v) => !v)} className="text-xs font-medium text-ir-gold-dark hover:underline">

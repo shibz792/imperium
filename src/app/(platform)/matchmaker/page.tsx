@@ -48,7 +48,13 @@ export default async function MatchmakerPage({ searchParams }: { searchParams: P
       keyword: [anchorRequirement.subtype, firstLocation].filter(Boolean).join(" "),
       dealType: anchorRequirement.dealType,
       district: district ?? "",
-      propertyType: anchorRequirement.subtype ?? "",
+      // Deliberately not anchorRequirement.subtype — that's this app's own
+      // vocabulary (House, Warehouse, Office, ...), and the sourcing
+      // property-type dropdown is now each site's own real category list
+      // (see IKMAN_PROPERTY_TYPES/LPW_PROPERTY_TYPES), not a lookalike this
+      // app's subtypes could map onto. The subtype is already folded into
+      // the keyword above instead, which both sites can actually search on.
+      propertyType: "",
     };
   }
 
