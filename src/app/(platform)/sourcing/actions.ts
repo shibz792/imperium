@@ -77,7 +77,7 @@ export async function searchIkmanListings(
 ): Promise<{ results: SourcingSearchResult[]; error?: string }> {
   await requireUser();
   try {
-    const raw = await searchIkman({ dealType: input.dealType, district: input.district, propertyType: input.propertyType, commercialType: input.commercialType, keyword: input.keyword });
+    const raw = await searchIkman({ dealType: input.dealType, district: input.district, propertyType: input.propertyType, commercialType: input.commercialType, city: input.city, keyword: input.keyword });
     const filtered = applyFilters(raw, {
       district: input.district,
       city: input.city,

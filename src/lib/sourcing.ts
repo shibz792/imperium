@@ -374,11 +374,38 @@ function ikmanLocationSlug(district: string): string {
   return district.toLowerCase().replace(/\s+/g, "-");
 }
 
+// ikman's district-scoped search never exposes a sub-area as a structured
+// field — every ad's own `location` field just echoes the district name
+// ("Colombo") back regardless of whether it's actually Kollupitiya or
+// Homagama (confirmed live: 77 "Colombo" land ads, all with location ===
+// "Colombo"). The real area only ever shows up, inconsistently, in the
+// free-text title — so a city/area search has to be folded into ikman's own
+// `query` full-text search (which does cover descriptions, not just
+// titles), not just checked against the useless structured field afterward.
+//
+// ikman's query search does an AND-of-terms match, not a phrase match —
+// verified live: the combined form "Colombo 3 (Kollupitiya)" (and even
+// "Colombo 5 Havelock Town" with the parens stripped) returns zero every
+// time, while the plain postal-number half ("Colombo 3") alone returns
+// real, mostly-accurate results (spot-checked: 6 of 10 hits for "Colombo 3"
+// genuinely say "Colombo 3" in the title; the other 4 are loose independent
+// token matches on "Colombo" + an unrelated "3" elsewhere in the title —
+// caught and dropped by applyFilters' own city text check afterward, which
+// requires the literal substring, not just both words present). So: prefer
+// the part before a parenthetical alt-name; fall back to the full city text
+// for every other district, where it's usually one or two words and already
+// verified to work directly ("Nugegoda", "Mount Lavinia").
+function ikmanCityQueryTerm(city: string): string | undefined {
+  const aliases = locationAliases(city);
+  return aliases[1] ?? aliases[0];
+}
+
 export function buildIkmanSearchUrl(opts: {
   dealType: "BUY" | "RENT" | "LEASE";
   district?: string;
   propertyType?: string;
   commercialType?: string;
+  city?: string;
   keyword?: string;
   page?: number;
 }): string {
@@ -393,7 +420,8 @@ export function buildIkmanSearchUrl(opts: {
   // can narrow an umbrella category by sale-vs-rent on its own.
   const categorySlug = (isSale ? cat?.saleSlug : cat?.rentSlug) ?? "property";
   const commercialHint = opts.propertyType === "commercial" && opts.commercialType ? IKMAN_COMMERCIAL_TYPES.find((t) => t.value === opts.commercialType)?.label.toLowerCase() : undefined;
-  const query = [opts.keyword?.trim(), commercialHint].filter(Boolean).join(" ");
+  const cityHint = opts.city?.trim() ? ikmanCityQueryTerm(opts.city) : undefined;
+  const query = [opts.keyword?.trim(), cityHint, commercialHint].filter(Boolean).join(" ");
   const params = new URLSearchParams();
   if (query) params.set("query", query);
   if (opts.page && opts.page > 1) params.set("page", String(opts.page));
@@ -435,7 +463,7 @@ function parseIkmanAds(html: string): Array<Record<string, unknown>> {
 // applyFilters ever runs.
 const IKMAN_PAGES = 3;
 
-export async function searchIkman(opts: { dealType: "BUY" | "RENT" | "LEASE"; district?: string; propertyType?: string; commercialType?: string; keyword?: string }): Promise<SourcingResult[]> {
+export async function searchIkman(opts: { dealType: "BUY" | "RENT" | "LEASE"; district?: string; propertyType?: string; commercialType?: string; city?: string; keyword?: string }): Promise<SourcingResult[]> {
   const first = await fetchHtml(buildIkmanSearchUrl(opts));
   let baseOpts = opts;
   let html = first.html;
