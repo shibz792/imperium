@@ -40,77 +40,82 @@ export type SourcingSearchResult = SourcingResult & {
   postedDays?: number;
 };
 
-export async function searchExternalListings(
-  input: {
-    sites: ("ikman" | "lankapropertyweb")[];
-    keyword: string;
-    dealType: "BUY" | "RENT" | "LEASE";
-    district?: string;
-    propertyType?: string;
-  } & SourcingFilters,
-): Promise<{ results: SourcingSearchResult[]; errors: string[] }> {
-  await requireUser();
-  const results: SourcingResult[] = [];
-  const errors: string[] = [];
-
-  await Promise.all(
-    input.sites.map(async (site) => {
-      try {
-        if (site === "ikman") {
-          // Real district/category/deal-type scoping now lives in the URL
-          // itself (see buildIkmanSearchUrl) — keyword is still passed
-          // through as ikman's own in-category text filter (verified live:
-          // it genuinely narrows within a scoped category), not as the only
-          // thing standing between "everything" and an accurate result.
-          results.push(...(await searchIkman({ dealType: input.dealType, district: input.district, propertyType: input.propertyType, keyword: input.keyword })));
-        } else {
-          results.push(
-            ...(await searchLankaPropertyWeb({ dealType: input.dealType, district: input.district, propertyType: input.propertyType })),
-          );
-        }
-      } catch (e) {
-        errors.push(`${SOURCE_LABEL[site]}: ${e instanceof Error ? e.message : "fetch failed"}`);
-      }
-    }),
-  );
-
-  const filtered = applyFilters(results, {
-    district: input.district,
-    city: input.city,
-    propertyType: input.propertyType,
-    dealType: input.dealType,
-    keyword: input.keyword,
-    priceMin: input.priceMin,
-    priceMax: input.priceMax,
-    sizeMin: input.sizeMin,
-    sizeMax: input.sizeMax,
-    bedrooms: input.bedrooms,
-    postedWithinDays: input.postedWithinDays,
-  });
-
-  // Dedup-against-DB: a listing already registered shouldn't invite a
-  // second registration — flag it instead so the card can link straight to
-  // the existing SourcedListing, or straight to the promoted Property if
-  // it's gone that far.
-  const urls = filtered.map((r) => r.url);
+// Dedup-against-DB + display-field enrichment, shared by both per-source
+// search actions below — a listing already registered shouldn't invite a
+// second registration (flag it so the card can link straight to the
+// existing SourcedListing, or the promoted Property if it's gone that
+// far), and priceValue/postedDays are computed here rather than in the
+// client for the same reason as their comment on SourcingSearchResult.
+async function enrichResults(results: SourcingResult[]): Promise<SourcingSearchResult[]> {
+  const urls = results.map((r) => r.url);
   const existing = urls.length
     ? await prisma.sourcedListing.findMany({ where: { sourceUrl: { in: urls } }, select: { id: true, sourceUrl: true, promotedPropertyId: true } })
     : [];
   const byUrl = new Map(existing.map((l) => [l.sourceUrl, l]));
+  return results.map((r) => {
+    const match = byUrl.get(r.url);
+    return {
+      ...r,
+      alreadyRegisteredListingId: match?.id,
+      alreadyImportedPropertyId: match?.promotedPropertyId ?? undefined,
+      priceValue: parsePriceToNumber(r.price),
+      postedDays: parsePostedAgoToDays(r.postedAgo),
+    };
+  });
+}
 
-  return {
-    results: filtered.map((r) => {
-      const match = byUrl.get(r.url);
-      return {
-        ...r,
-        alreadyRegisteredListingId: match?.id,
-        alreadyImportedPropertyId: match?.promotedPropertyId ?? undefined,
-        priceValue: parsePriceToNumber(r.price),
-        postedDays: parsePostedAgoToDays(r.postedAgo),
-      };
-    }),
-    errors,
-  };
+// Two separate search actions, not one combined one — ikman.lk and
+// LankaPropertyWeb genuinely support different filters (LPW has real
+// structured size data ikman never exposes in search results; ikman has
+// real posted-date text LPW never exposes at all; LPW's own district
+// scoping only really works for Colombo). Forcing one shared filter set
+// onto both meant offering filters that silently did nothing for whichever
+// site didn't support them. SourcingClient now searches one site at a
+// time, its filter panel only ever showing what that site can actually do.
+export async function searchIkmanListings(
+  input: { dealType: "BUY" | "RENT" | "LEASE"; keyword: string; district?: string; city?: string; propertyType?: string } & SourcingFilters,
+): Promise<{ results: SourcingSearchResult[]; error?: string }> {
+  await requireUser();
+  try {
+    const raw = await searchIkman({ dealType: input.dealType, district: input.district, propertyType: input.propertyType, keyword: input.keyword });
+    const filtered = applyFilters(raw, {
+      district: input.district,
+      city: input.city,
+      propertyType: input.propertyType,
+      dealType: input.dealType,
+      priceMin: input.priceMin,
+      priceMax: input.priceMax,
+      bedrooms: input.bedrooms,
+      postedWithinDays: input.postedWithinDays,
+    });
+    return { results: await enrichResults(filtered) };
+  } catch (e) {
+    return { results: [], error: e instanceof Error ? e.message : "ikman.lk search failed." };
+  }
+}
+
+export async function searchLpwListings(
+  input: { dealType: "BUY" | "RENT" | "LEASE"; district?: string; city?: string; propertyType?: string; keyword?: string } & SourcingFilters,
+): Promise<{ results: SourcingSearchResult[]; error?: string }> {
+  await requireUser();
+  try {
+    const raw = await searchLankaPropertyWeb({ dealType: input.dealType, district: input.district, propertyType: input.propertyType });
+    const filtered = applyFilters(raw, {
+      district: input.district,
+      city: input.city,
+      propertyType: input.propertyType,
+      dealType: input.dealType,
+      keyword: input.keyword,
+      priceMin: input.priceMin,
+      priceMax: input.priceMax,
+      sizeMin: input.sizeMin,
+      sizeMax: input.sizeMax,
+      bedrooms: input.bedrooms,
+    });
+    return { results: await enrichResults(filtered) };
+  } catch (e) {
+    return { results: [], error: e instanceof Error ? e.message : "LankaPropertyWeb search failed." };
+  }
 }
 
 export async function importListing(url: string, source: "ikman" | "lankapropertyweb"): Promise<{ draft: Draft | null; error?: string }> {
