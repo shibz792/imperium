@@ -29,6 +29,7 @@ export default async function ContactDetailPage({ params, searchParams }: { para
         dealsAsBroker: { include: { property: true, client: true } },
         activities: { include: { user: true }, orderBy: { createdAt: "desc" } },
         agentExclusions: { include: { agent: true }, orderBy: { createdAt: "desc" } },
+        whatsappConversations: { select: { id: true }, take: 1 },
       },
     }),
     prisma.user.findMany({ where: { role: { in: ["AGENT", "SALES_MANAGER", "DIRECTOR", "SUPER_ADMIN"] }, active: true }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
@@ -59,6 +60,9 @@ export default async function ContactDetailPage({ params, searchParams }: { para
         actions={
           <>
             {isBroker && <Link href="/agents" className="ir-btn ir-btn-ghost">View Agents roster</Link>}
+            {contact.whatsappConversations[0] && (
+              <Link href={`/whatsapp/${contact.whatsappConversations[0].id}`} className="ir-btn ir-btn-ghost">View WhatsApp conversation →</Link>
+            )}
             <Link href={`/contacts/${id}/edit`} className="ir-btn ir-btn-ghost"><Pencil size={14} /> Edit</Link>
             {showConfidential && <WhatsAppButton phone={contact.phone} message={`Hi ${contact.name.split(" ")[0]}, `} />}
             {isAdmin(user) && (

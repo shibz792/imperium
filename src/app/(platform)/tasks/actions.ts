@@ -9,7 +9,7 @@ const CAN_DELETE_ANY = ["SUPER_ADMIN", "DIRECTOR", "SALES_MANAGER"];
 const DAY = 86_400_000;
 const TASK_BLOCK_MS = 30 * 60_000; // a task on the calendar is a 30-minute placeholder, not a real meeting
 // "property" doesn't naively pluralize to its own route segment ("propertys").
-const ENTITY_PATH: Record<string, string> = { property: "/properties", requirement: "/requirements" };
+const ENTITY_PATH: Record<string, string> = { property: "/properties", requirement: "/requirements", contact: "/contacts" };
 function entityPath(type: string | null, id: string | null): string | null {
   if (!type || !id || !ENTITY_PATH[type]) return null;
   return `${ENTITY_PATH[type]}/${id}`;

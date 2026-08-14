@@ -381,6 +381,21 @@ export async function ensurePropertyDriveFolder(propertyId: string, propertyRef:
   return folderId;
 }
 
+// Same one-folder-per-thing pattern as ensurePropertyDriveFolder, but for
+// photos a lead sends over WhatsApp before any Property necessarily exists
+// to hang a folder id off of — cached by name instead ("WhatsApp Leads",
+// same root as property media), found-or-created fresh each call since
+// there's no Property row here to cache the id on. Called at most once per
+// inbound photo, not per page load, so the extra Drive round trip is cheap.
+export async function ensureWhatsAppMediaFolder(): Promise<string | null> {
+  const storageUserId = await getStorageAccountUserId();
+  if (!storageUserId) return null;
+
+  const rootId = await findOrCreateFolder(storageUserId, ROOT_FOLDER_NAME);
+  if (!rootId) return null;
+  return findOrCreateFolder(storageUserId, "WhatsApp Leads", rootId);
+}
+
 async function makeFilePublic(userId: string, fileId: string): Promise<void> {
   const token = await getValidAccessToken(userId);
   if (!token) return;

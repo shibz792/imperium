@@ -56,32 +56,34 @@ model User {
   commissionRate          Float?
   createdAt               DateTime           @default(now())
 
-  assignedProperties        Property[]              @relation("PropertyAgent")
-  assignedContacts          Contact[]
-  assignedRequirements      Requirement[]           @relation("RequirementAgent")
-  assignedDeals             Deal[]                  @relation("DealAgent")
+  assignedProperties            Property[]              @relation("PropertyAgent")
+  assignedContacts              Contact[]
+  assignedRequirements          Requirement[]           @relation("RequirementAgent")
+  assignedDeals                 Deal[]                  @relation("DealAgent")
   // Multiple agents can work the same listing/requirement/deal together —
   // "assigned" is the primary owner, "collaborating" is everyone else on it.
-  collaboratingProperties   Property[]              @relation("PropertyCollaborators")
-  collaboratingRequirements Requirement[]           @relation("RequirementCollaborators")
-  collaboratingDeals        Deal[]                  @relation("DealCollaborators")
-  viewingsAsAgent           Viewing[]               @relation("ViewingAgent")
-  tasks                     Task[]                  @relation("TaskAssignee")
-  tasksCreated              Task[]                  @relation("TaskCreator")
-  auditLogs                 AuditLog[]
-  activities                Activity[]
-  aiIntakeJobs              AiIntakeJob[]
-  documentsUploaded         Document[]
-  marketingApproved         MarketingAsset[]        @relation("MarketingApprover")
-  notes                     Note[]
-  googleAccount             GoogleAccount?
-  metaAccountsConnected     MetaAccount[]           @relation("MetaConnector")
-  metaPostsPublished        MetaPublishedPost[]     @relation("MetaPublisher")
-  metaCampaignsCreated      MetaCampaign[]          @relation("MetaCampaignCreator")
-  excludedFromContacts      ContactAgentExclusion[] @relation("ExcludedFromContact")
-  contactExclusionsCreated  ContactAgentExclusion[] @relation("ContactExclusionCreator")
-  sourcedListingsRegistered SourcedListing[]        @relation("SourcedListingRegisteredBy")
-  sourcedListingsPromoted   SourcedListing[]        @relation("SourcedListingPromotedBy")
+  collaboratingProperties       Property[]              @relation("PropertyCollaborators")
+  collaboratingRequirements     Requirement[]           @relation("RequirementCollaborators")
+  collaboratingDeals            Deal[]                  @relation("DealCollaborators")
+  viewingsAsAgent               Viewing[]               @relation("ViewingAgent")
+  tasks                         Task[]                  @relation("TaskAssignee")
+  tasksCreated                  Task[]                  @relation("TaskCreator")
+  auditLogs                     AuditLog[]
+  activities                    Activity[]
+  aiIntakeJobs                  AiIntakeJob[]
+  documentsUploaded             Document[]
+  marketingApproved             MarketingAsset[]        @relation("MarketingApprover")
+  notes                         Note[]
+  googleAccount                 GoogleAccount?
+  metaAccountsConnected         MetaAccount[]           @relation("MetaConnector")
+  metaPostsPublished            MetaPublishedPost[]     @relation("MetaPublisher")
+  metaCampaignsCreated          MetaCampaign[]          @relation("MetaCampaignCreator")
+  excludedFromContacts          ContactAgentExclusion[] @relation("ExcludedFromContact")
+  contactExclusionsCreated      ContactAgentExclusion[] @relation("ContactExclusionCreator")
+  sourcedListingsRegistered     SourcedListing[]        @relation("SourcedListingRegisteredBy")
+  sourcedListingsPromoted       SourcedListing[]        @relation("SourcedListingPromotedBy")
+  whatsappConversationsAssigned WhatsAppConversation[]  @relation("WhatsAppConversationAgent")
+  whatsappMessagesSent          WhatsAppMessage[]
 }
 
 // One connected Google account per user — Calendar (two-way: viewings/tasks
@@ -163,14 +165,15 @@ model Contact {
   createdAt         DateTime        @default(now())
   updatedAt         DateTime        @updatedAt
 
-  ownedProperties Property[]              @relation("PropertyOwner")
-  requirements    Requirement[]           @relation("RequirementClient")
-  dealsAsClient   Deal[]                  @relation("DealClient")
-  dealsAsBroker   Deal[]                  @relation("DealOtherBroker")
-  viewings        Viewing[]               @relation("ViewingContact")
-  documents       Document[]
-  activities      Activity[]
-  agentExclusions ContactAgentExclusion[]
+  ownedProperties       Property[]              @relation("PropertyOwner")
+  requirements          Requirement[]           @relation("RequirementClient")
+  dealsAsClient         Deal[]                  @relation("DealClient")
+  dealsAsBroker         Deal[]                  @relation("DealOtherBroker")
+  viewings              Viewing[]               @relation("ViewingContact")
+  documents             Document[]
+  activities            Activity[]
+  agentExclusions       ContactAgentExclusion[]
+  whatsappConversations WhatsAppConversation[]
 
   @@index([contactType])
   @@index([assignedAgentId])
@@ -362,21 +365,22 @@ model Property {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  collaborators   User[]           @relation("PropertyCollaborators")
-  media           PropertyMedia[]
-  documents       Document[]
-  viewings        Viewing[]
-  deals           Deal[]
-  marketingAssets MarketingAsset[]
-  sharePages      SharePage[]
-  activities      Activity[]
-  matchShares     MatchShare[]
-  notes           Note[]
-  metaCampaigns   MetaCampaign[]
+  collaborators        User[]                @relation("PropertyCollaborators")
+  media                PropertyMedia[]
+  documents            Document[]
+  viewings             Viewing[]
+  deals                Deal[]
+  marketingAssets      MarketingAsset[]
+  sharePages           SharePage[]
+  activities           Activity[]
+  matchShares          MatchShare[]
+  notes                Note[]
+  metaCampaigns        MetaCampaign[]
+  whatsappConversation WhatsAppConversation?
   // The sourced-listing this property was promoted from, if any — Property
   // doesn't own this FK (SourcedListing.promotedPropertyId does), so this
   // side is just the reverse lookup.
-  sourcedListing  SourcedListing?
+  sourcedListing       SourcedListing?
 
   @@index([listingStatus])
   @@index([assignedAgentId])
@@ -396,9 +400,9 @@ model Property {
 // sourcing/actions.ts) that a human decides to take later, not a side
 // effect of having looked at the ad.
 model SourcedListing {
-  id            String   @id @default(cuid())
+  id            String  @id @default(cuid())
   source        String // "ikman" | "lankapropertyweb"
-  sourceUrl     String   @unique
+  sourceUrl     String  @unique
   title         String
   price         String?
   // Parsed from `price` at registration time (parsePriceToNumber) — the
@@ -422,7 +426,7 @@ model SourcedListing {
   // time (PropertyDraftFields, same shape AI Intake uses) — stored so
   // promoting later reuses exactly what was already reviewed once, rather
   // than re-fetching the listing and re-running AI extraction.
-  fieldsJson Json?
+  fieldsJson    Json?
 
   registeredById String?
   registeredBy   User?    @relation("SourcedListingRegisteredBy", fields: [registeredById], references: [id])
@@ -576,10 +580,11 @@ model Requirement {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  collaborators User[]       @relation("RequirementCollaborators")
-  deals         Deal[]
-  activities    Activity[]
-  matchShares   MatchShare[]
+  collaborators        User[]                @relation("RequirementCollaborators")
+  deals                Deal[]
+  activities           Activity[]
+  matchShares          MatchShare[]
+  whatsappConversation WhatsAppConversation?
 
   @@index([status])
   @@index([clientId])
@@ -1065,6 +1070,96 @@ model AiIntakeJob {
   createdAt   DateTime     @default(now())
 
   @@index([createdById])
+}
+
+// ---------------------------------------------------------------------------
+// WhatsApp AI Agent — one row per distinct wa_id (phone number) holding
+// running qualification state; WhatsAppMessage is the full transcript (and
+// the LLM's conversation memory). Deliberately separate from Activity:
+// Activity is a post-hoc feed keyed to an already-resolved Contact, but a
+// WhatsApp lead needs to exist and be actionable (transcript, slots,
+// status) before a Contact necessarily does — this is the pre-Contact
+// staging area, the same reason SourcedListing stays a separate staging
+// model from Property. Each turn also gets a mirrored logActivity() call
+// once contactId exists, so the Contact page's timeline shows it too.
+// ---------------------------------------------------------------------------
+
+enum WhatsAppConversationStatus {
+  ACTIVE // bot is replying automatically
+  HANDED_OFF // a human has taken over; bot stays silent on this conversation
+  CLOSED // dead lead / conversation ended, nothing further expected
+}
+
+enum WhatsAppMessageDirection {
+  IN
+  OUT
+}
+
+model WhatsAppConversation {
+  id                String                     @id @default(cuid())
+  waId              String                     @unique // Meta's wa_id — digits, no "+"
+  profileName       String?
+  status            WhatsAppConversationStatus @default(ACTIVE)
+  // Running qualification state — { intent, requirement?: Partial<RequirementDraftFields>,
+  // property?: Partial<PropertyDraftFields> }, see src/lib/whatsappAgent.ts.
+  slotsJson         Json?
+  turnCount         Int                        @default(0)
+  // Consecutive turns where the model self-reported it couldn't productively
+  // continue — the auto-escalation trigger, distinct from turnCount which
+  // just bounds total conversation length.
+  lowConfidenceRuns Int                        @default(0)
+  // Meta's raw `referral` object from the first inbound message, captured
+  // once and never overwritten — first-touch Click-to-WhatsApp ad
+  // attribution (headline, source_url, ad id). Store-and-display only, no
+  // reconciliation against MetaCampaign.
+  referralJson      Json?
+
+  contactId       String?
+  contact         Contact?     @relation(fields: [contactId], references: [id])
+  requirementId   String?      @unique // set once a SEEKING lead materializes a Requirement
+  requirement     Requirement? @relation(fields: [requirementId], references: [id])
+  propertyId      String?      @unique // set once an OFFERING lead materializes a Property
+  property        Property?    @relation(fields: [propertyId], references: [id])
+  assignedAgentId String?
+  assignedAgent   User?        @relation("WhatsAppConversationAgent", fields: [assignedAgentId], references: [id])
+  handedOffAt     DateTime?
+
+  lastInboundAt  DateTime?
+  lastOutboundAt DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  messages WhatsAppMessage[]
+
+  @@index([status])
+  @@index([contactId])
+  @@index([assignedAgentId])
+}
+
+model WhatsAppMessage {
+  id                String                   @id @default(cuid())
+  conversationId    String
+  conversation      WhatsAppConversation     @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  direction         WhatsAppMessageDirection
+  text              String
+  // Meta's wamid — the webhook-retry idempotency key. Nullable since
+  // Postgres allows multiple NULLs under a unique constraint (an OUT row
+  // where the send failed before Meta returned an id stays safely null).
+  externalMessageId String?                  @unique
+  // Set only when a human sent this OUT message manually from the
+  // conversation detail view, overriding the bot — null means bot-authored.
+  authorUserId      String?
+  authorUser        User?                    @relation(fields: [authorUserId], references: [id])
+  // Set when this inbound message carried a photo (WhatsApp sends one media
+  // item per message). mediaDriveFileId follows the exact same convention
+  // as PropertyMedia.driveFileId — streamed back via the same generic
+  // /api/drive-media/[fileId] route, no new streaming code needed.
+  mediaDriveFileId  String?
+  mediaMimeType     String?
+  mediaCaption      String? // WhatsApp's own caption text on the photo, if any
+  createdAt         DateTime                 @default(now())
+
+  @@index([conversationId, createdAt])
 }
 
 // ---------------------------------------------------------------------------

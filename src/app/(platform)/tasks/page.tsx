@@ -115,7 +115,7 @@ export default async function TasksPage() {
   );
 }
 
-const ENTITY_PATH: Record<string, string> = { property: "/properties", requirement: "/requirements" };
+const ENTITY_PATH: Record<string, string> = { property: "/properties", requirement: "/requirements", contact: "/contacts" };
 
 function TaskRow({
   task,

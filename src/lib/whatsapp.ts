@@ -136,9 +136,33 @@ export function verifyWebhookSignature(rawBody: string, signatureHeader: string 
   return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
 
-export type InboundWhatsAppMessage = { from: string; text: string; profileName?: string };
+export type InboundWhatsAppReferral = {
+  source_id?: string;
+  source_url?: string;
+  source_type?: string;
+  headline?: string;
+  body?: string;
+  ctwa_clid?: string;
+  media_type?: string;
+  image_url?: string;
+};
 
-// Meta's webhook payload shape for an inbound text message.
+export type InboundWhatsAppMessage = {
+  id: string; // Meta's wamid — webhook-retry idempotency key
+  from: string;
+  text: string;
+  profileName?: string;
+  // Present only on the first message after a Click-to-WhatsApp ad click.
+  referral?: InboundWhatsAppReferral;
+  // Present only on an image message — no bytes/URL in the payload itself,
+  // just a short-lived media id (see downloadWhatsAppMedia below).
+  image?: { mediaId: string; mimeType: string; caption?: string };
+};
+
+// Meta's webhook payload shape for an inbound message. Handles both text
+// and image messages — every other type (video/audio/document/location/
+// sticker) is still skipped, same as before, since nothing in this app
+// reads them yet.
 export function parseInboundMessages(payload: unknown): InboundWhatsAppMessage[] {
   const out: InboundWhatsAppMessage[] = [];
   const entries = (payload as { entry?: unknown[] })?.entry ?? [];
@@ -149,13 +173,65 @@ export function parseInboundMessages(payload: unknown): InboundWhatsAppMessage[]
       const messages = (value?.messages as Array<Record<string, unknown>> | undefined) ?? [];
       const contacts = (value?.contacts as Array<{ profile?: { name?: string }; wa_id?: string }> | undefined) ?? [];
       for (const m of messages) {
-        if (m.type !== "text") continue;
+        const id = String(m.id ?? "");
         const from = String(m.from ?? "");
-        const text = String((m.text as { body?: string } | undefined)?.body ?? "");
         const profile = contacts.find((c) => c.wa_id === from);
-        if (text) out.push({ from, text, profileName: profile?.profile?.name });
+        const referral = m.referral as InboundWhatsAppReferral | undefined;
+
+        if (m.type === "text") {
+          const text = String((m.text as { body?: string } | undefined)?.body ?? "");
+          if (text) out.push({ id, from, text, profileName: profile?.profile?.name, referral });
+          continue;
+        }
+        if (m.type === "image") {
+          const img = m.image as { id?: string; mime_type?: string; caption?: string } | undefined;
+          if (!img?.id) continue;
+          // A bare photo with no caption still needs some text for the
+          // conversation loop to react to.
+          const text = img.caption?.trim() || "[Photo received]";
+          out.push({
+            id,
+            from,
+            text,
+            profileName: profile?.profile?.name,
+            referral,
+            image: { mediaId: img.id, mimeType: img.mime_type ?? "image/jpeg", caption: img.caption },
+          });
+        }
       }
     }
   }
   return out;
+}
+
+// ---------------------------------------------------------------------------
+// Inbound media download — Meta's webhook payload for an image message
+// never includes the bytes or even a stable URL, just a short-lived media
+// id. Two-step Graph API fetch: GET /{media-id} returns a CDN url (plus
+// mime_type) that expires quickly, so it must be fetched immediately with
+// the same Bearer token, not deferred. Returns null on any failure — never
+// throws, matching this file's existing convention — so a broken photo
+// download never breaks the conversation around it.
+// ---------------------------------------------------------------------------
+
+export async function downloadWhatsAppMedia(mediaId: string): Promise<{ buffer: Buffer; mimeType: string } | null> {
+  if (!whatsappCloudConfigured()) return null;
+  try {
+    const metaRes = await fetch(`https://graph.facebook.com/v21.0/${mediaId}`, {
+      headers: { Authorization: `Bearer ${process.env.WHATSAPP_ACCESS_TOKEN}` },
+    });
+    if (!metaRes.ok) return null;
+    const meta = (await metaRes.json()) as { url?: string; mime_type?: string };
+    if (!meta.url) return null;
+
+    const fileRes = await fetch(meta.url, {
+      headers: { Authorization: `Bearer ${process.env.WHATSAPP_ACCESS_TOKEN}` },
+    });
+    if (!fileRes.ok) return null;
+    const buffer = Buffer.from(await fileRes.arrayBuffer());
+    return { buffer, mimeType: meta.mime_type ?? "image/jpeg" };
+  } catch (err) {
+    console.error("WhatsApp media download failed", err);
+    return null;
+  }
 }

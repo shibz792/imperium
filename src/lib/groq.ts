@@ -10,7 +10,12 @@ export function groqConfigured() {
   return Boolean(process.env.GROQ_API_KEY);
 }
 
-export async function groqJson<T = unknown>(system: string, user: string): Promise<T | null> {
+export type GroqChatMessage = { role: "system" | "user" | "assistant"; content: string };
+
+// Multi-turn variant — needed by the WhatsApp lead-chat agent, which has to
+// replay real conversation history (not just one system + one user string)
+// so the model actually remembers what was already asked/answered.
+export async function groqChat<T = unknown>(messages: GroqChatMessage[]): Promise<T | null> {
   const apiKey = process.env.GROQ_API_KEY;
   if (!apiKey) return null;
 
@@ -25,10 +30,7 @@ export async function groqJson<T = unknown>(system: string, user: string): Promi
         model: process.env.GROQ_MODEL || DEFAULT_MODEL,
         temperature: 0.2,
         response_format: { type: "json_object" },
-        messages: [
-          { role: "system", content: system },
-          { role: "user", content: user },
-        ],
+        messages,
       }),
       cache: "no-store",
     });
@@ -45,4 +47,13 @@ export async function groqJson<T = unknown>(system: string, user: string): Promi
     console.error("Groq request failed", err);
     return null;
   }
+}
+
+// Single-shot convenience wrapper — every existing caller (AI Intake,
+// Marketing Studio, Notes AI) just wants one system + one user string.
+export async function groqJson<T = unknown>(system: string, user: string): Promise<T | null> {
+  return groqChat<T>([
+    { role: "system", content: system },
+    { role: "user", content: user },
+  ]);
 }

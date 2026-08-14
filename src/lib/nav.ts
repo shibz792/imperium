@@ -33,6 +33,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/notes", label: "Notes", icon: "StickyNote", section: "Workspace", roles: SALES_TEAM_ROLES },
 
   { href: "/ai-intake", label: "AI Intake", icon: "Sparkles", section: "Tools", roles: AI_INTAKE_ROLES },
+  { href: "/whatsapp", label: "WhatsApp Leads", icon: "MessageCircle", section: "Tools", roles: SALES_TEAM_ROLES },
   { href: "/sourcing", label: "External Sourcing", icon: "Search", section: "Tools", roles: SOURCING_ROLES },
   { href: "/matchmaker", label: "Matchmaker", icon: "Radar", section: "Tools", roles: VIEWING_MATCH_ROLES },
   { href: "/marketing-studio", label: "Marketing Studio", icon: "Megaphone", section: "Tools", roles: ADMIN_ROLES },

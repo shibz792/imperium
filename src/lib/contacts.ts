@@ -11,7 +11,11 @@ export async function findOrCreateContact(
   name: string | undefined,
   phone: string | undefined,
   type: "OWNER" | "BUYER" | "TENANT" | "OUTSOURCED",
-  agentId: string,
+  // Widened to accept null — the WhatsApp lead-chat agent creates/finds
+  // Contacts from an unauthenticated webhook context with no signed-in
+  // agent to attribute this to. assignedAgentId is already a nullable
+  // column; a null lead just sits unassigned until human handoff assigns it.
+  agentId: string | null,
   opts?: { source?: string; capacity?: "INDIVIDUAL" | "COMPANY" | "REPRESENTATIVE"; alternatePhone?: string },
 ): Promise<string> {
   if (phone) {
