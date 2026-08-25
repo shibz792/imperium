@@ -4,7 +4,14 @@
 // parser — AI Intake must never hard-fail just because a key isn't set.
 
 const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
-const DEFAULT_MODEL = "llama-3.3-70b-versatile";
+// llama-3.3-70b-versatile was decommissioned by Groq (confirmed live against
+// /openai/v1/models — no longer in their catalog at all) and every call was
+// silently falling back to the heuristic parser as a result. Verified this
+// replacement live: real request with response_format json_object, correct
+// JSON back. Kept as a fallback for when GROQ_MODEL isn't set — the env var
+// on Vercel is the actual source of truth and can move to a newer model
+// without a code change.
+const DEFAULT_MODEL = "openai/gpt-oss-120b";
 
 export function groqConfigured() {
   return Boolean(process.env.GROQ_API_KEY);
