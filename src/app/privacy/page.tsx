@@ -110,7 +110,7 @@ export default function PrivacyPolicyPage() {
             <Section title="Data deletion">
               <p>
                 To request deletion of your personal data, message us on WhatsApp at <strong>+94 77 535 3774</strong> or email{" "}
-                <a href="mailto:privacy@imperiumrealty.lk" className="text-ir-gold-dark hover:underline">privacy@imperiumrealty.lk</a> and
+                <a href="mailto:info@imperium.lk" className="text-ir-gold-dark hover:underline">info@imperium.lk</a> and
                 ask us to delete your record. Please include your name and phone number so we can locate it. We&apos;ll confirm once it&apos;s
                 done, and will let you know if any part of it must be retained under a legal or regulatory obligation, and why.
               </p>
@@ -135,7 +135,7 @@ export default function PrivacyPolicyPage() {
               <p>
                 Imperium Realty<br />
                 WhatsApp: +94 77 535 3774<br />
-                Email: <a href="mailto:privacy@imperiumrealty.lk" className="text-ir-gold-dark hover:underline">privacy@imperiumrealty.lk</a>
+                Email: <a href="mailto:info@imperium.lk" className="text-ir-gold-dark hover:underline">info@imperium.lk</a>
               </p>
             </Section>
           </div>
