@@ -18,7 +18,15 @@ export type ConversationSlots = {
   intent: LeadIntent;
   requirement?: Partial<RequirementDraftFields>;
   property?: Partial<PropertyDraftFields>;
+  // A short human-readable summary of this contact's history with us
+  // (an existing Requirement or owned Property from before this
+  // conversation started), set once at conversation creation and carried
+  // forward every turn — lets Sam greet a returning lead naturally instead
+  // of treating everyone as a stranger.
+  priorContext?: string;
 };
+
+export type MatchedListing = { title: string; location: string; price: string; size?: string };
 
 export type AgentTurnResult = {
   reply: string;
@@ -31,6 +39,67 @@ export type AgentTurnResult = {
 };
 
 // ---------------------------------------------------------------------------
+// Live inventory check — "doesn't check the system for listings" was a real
+// gap: the agent used to qualify a lead in a vacuum and only ever touch the
+// Property table at the very end, when materializing a Requirement. This
+// queries current ACTIVE inventory against whatever's known so far (loosely
+// — category is the only hard filter, dealType/location narrow further when
+// known) so Sam can mention real listings mid-conversation instead of only
+// ever asking abstract questions. Deliberately conservative: only ever
+// fed to the model as a fixed list it's told not to embellish beyond.
+// ---------------------------------------------------------------------------
+
+async function findMatchingProperties(slots: Partial<RequirementDraftFields> | undefined): Promise<MatchedListing[]> {
+  if (!slots?.category) return [];
+  const transactionType = slots.dealType === "RENT" ? "RENT" : slots.dealType === "LEASE" ? "LEASE" : slots.dealType === "BUY" ? "SALE" : undefined;
+  const locations = slots.locations ?? [];
+  const locationFilters = locations.flatMap((loc) => [
+    { city: { contains: loc, mode: "insensitive" as const } },
+    { district: { contains: loc, mode: "insensitive" as const } },
+  ]);
+
+  const properties = await prisma.property.findMany({
+    where: {
+      listingStatus: "ACTIVE",
+      category: slots.category as never,
+      ...(transactionType ? { transactionType: transactionType as never } : {}),
+      ...(locationFilters.length ? { OR: locationFilters } : {}),
+    },
+    orderBy: { createdAt: "desc" },
+    take: 5,
+    select: { title: true, city: true, district: true, totalPrice: true, monthlyRental: true, currency: true, sizeSqft: true, sizePerches: true },
+  });
+
+  return properties.map((p) => ({
+    title: p.title,
+    location: p.city ?? p.district ?? "location tbc",
+    price: p.totalPrice != null ? `${p.currency} ${p.totalPrice.toLocaleString()}` : p.monthlyRental != null ? `${p.currency} ${p.monthlyRental.toLocaleString()}/mo` : "price on request",
+    size: p.sizeSqft != null ? `${p.sizeSqft} sqft` : p.sizePerches != null ? `${p.sizePerches} perches` : undefined,
+  }));
+}
+
+// Checked once, at conversation creation, against the Contact this phone
+// number resolves to (findOrCreateContact already dedupes by phone, so an
+// existing Contact here means a genuine returning lead, not a fresh one).
+export async function buildPriorContext(contactId: string): Promise<string | undefined> {
+  const [requirement, ownedProperty] = await Promise.all([
+    prisma.requirement.findFirst({ where: { clientId: contactId }, orderBy: { createdAt: "desc" } }),
+    prisma.property.findFirst({ where: { ownerId: contactId }, orderBy: { createdAt: "desc" } }),
+  ]);
+  const parts: string[] = [];
+  if (requirement) {
+    const locations = (requirement.preferredLocationsJson as string[] | null) ?? [];
+    parts.push(
+      `They have an existing requirement on file: looking to ${requirement.dealType.toLowerCase()} a ${(requirement.subtype ?? requirement.category).toLowerCase()}${locations.length ? ` in ${locations.join("/")}` : ""} (status: ${requirement.status.toLowerCase().replace(/_/g, " ")}).`,
+    );
+  }
+  if (ownedProperty) {
+    parts.push(`They previously listed a property with us: "${ownedProperty.title}" (status: ${ownedProperty.listingStatus.toLowerCase()}).`);
+  }
+  return parts.length ? parts.join(" ") : undefined;
+}
+
+// ---------------------------------------------------------------------------
 // System prompt — same Sri Lankan real-estate domain knowledge as AI
 // Intake's extractor (src/lib/ai-intake.ts), rewritten for a live-chat
 // persona instead of a one-shot extraction pass: greet, ask one or two
@@ -40,10 +109,10 @@ export type AgentTurnResult = {
 // read, not a hardcoded trigger).
 // ---------------------------------------------------------------------------
 
-function buildSystemPrompt(prior: ConversationSlots, photoCount: number): string {
-  return `You are Imperium Realty's WhatsApp assistant, chatting live with someone who just messaged the business's WhatsApp number — often after clicking a Facebook/Instagram ad. Reply the way a helpful, brisk property consultant would over WhatsApp: short, warm, plain sentences, never a wall of text, never more than one or two questions in a single reply.
+function buildSystemPrompt(prior: ConversationSlots, photoCount: number, isFirstTurn: boolean, matches: MatchedListing[]): string {
+  return `You are "Sam", Imperium Realty's WhatsApp assistant — warm, friendly and genuinely helpful, never corporate or robotic. You're chatting live with someone who just messaged the business's WhatsApp number, often after clicking a Facebook/Instagram ad. Write the way a switched-on, likeable property consultant would actually text on WhatsApp: short natural sentences, contractions, a bit of real warmth ("Lovely, thanks!", "Got it!"), never a wall of text, never more than one or two questions in a single reply.
 
-First, work out this person's intent from the conversation so far:
+${isFirstTurn ? `This is the very first message in this conversation — open your reply with a brief, warm welcome that introduces you by name ("Hi, I'm Sam from Imperium Realty! 😊") before anything else, then naturally ease into finding out how you can help. Keep it short — a welcome, not an interrogation.\n\n` : ""}${prior.priorContext ? `Note — this is a returning contact: ${prior.priorContext} Greet them like someone you recognise if it fits naturally (e.g. "Welcome back!"), and don't make them repeat information already on file unless they bring up something new or it's changed.\n\n` : ""}First, work out this person's intent from the conversation so far:
 - "SEEKING" — they're looking for a property to buy or rent.
 - "OFFERING" — they're an owner wanting to sell or rent out their own property (a very common real signal: they send photos of a house/room/land with no "looking for" framing, or say things like "I want to sell my house").
 - "UNCLEAR" — not yet obvious either way; ask a light, natural question to find out (e.g. "Are you looking for a property, or do you have one you'd like to list with us?").
@@ -53,7 +122,14 @@ If SEEKING, gather (one or two at a time, never all at once): dealType (BUY/RENT
 
 If OFFERING, gather: category, subtype, city, district, sizeSqft or sizePerches or sizeAcres, totalPrice (for sale) or monthlyRental (for rent), and encourage them to send a few photos if none have arrived yet. ${photoCount > 0 ? `They have already sent ${photoCount} photo(s) — acknowledge that naturally, don't ask them to resend.` : "No photos have arrived yet — if it's natural in the conversation, ask for a couple."}
 
-Sri Lankan currency: LKR. "lakh(s)" = 100,000. "Cr"/"crore" = 10,000,000. "mn"/"million" = 1,000,000. Never invent a price, availability, or a specific property that wasn't actually given to you — you have no live inventory search in this conversation. If asked something you can't answer confidently, say a property consultant will follow up, and set handoffRequested true.
+${
+    matches.length > 0
+      ? `Here are real ACTIVE listings currently in our system that may match what they've described so far — bring up one or two of the most relevant ones naturally when it fits, using ONLY the details below (never invent a price, size, or feature beyond what's listed here):\n${matches.map((m, i) => `${i + 1}. ${m.title} — ${m.location}, ${m.price}${m.size ? `, ${m.size}` : ""}`).join("\n")}\n`
+      : prior.intent === "SEEKING"
+        ? "No current listings in our system match what's known so far — don't claim to have specific inventory to show; just say you'll check with the team once you've confirmed a bit more.\n"
+        : ""
+  }
+Sri Lankan currency: LKR. "lakh(s)" = 100,000. "Cr"/"crore" = 10,000,000. "mn"/"million" = 1,000,000. Never invent a price, availability, or a specific property beyond the real listings (if any) given to you above. If asked something you can't answer confidently, say a property consultant will follow up, and set handoffRequested true.
 
 Set "handoffRequested": true when the person explicitly asks to speak to a person, wants to arrange a viewing, is ready to move forward, or you genuinely cannot help further in the conversation. Set "confused": true only when you could not make sense of their message at all (garbled, off-topic, or repeats something already answered) — not just because a field is still missing.
 
@@ -93,9 +169,13 @@ export async function runAgentTurn(
   photoCount: number,
 ): Promise<AgentTurnResult | null> {
   const prior: ConversationSlots = (conversation.slotsJson as ConversationSlots | null) ?? { intent: "UNCLEAR" };
+  // history already includes the inbound message that triggered this turn —
+  // length 1 means this is genuinely the first message of the conversation.
+  const isFirstTurn = history.length <= 1;
+  const matches = prior.intent === "SEEKING" ? await findMatchingProperties(prior.requirement) : [];
 
   const messages: GroqChatMessage[] = [
-    { role: "system", content: buildSystemPrompt(prior, photoCount) },
+    { role: "system", content: buildSystemPrompt(prior, photoCount, isFirstTurn, matches) },
     ...history.map((m) => ({ role: m.direction === "IN" ? ("user" as const) : ("assistant" as const), content: m.text })),
   ];
 

@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { verifyWebhookHandshake, verifyWebhookSignature, parseInboundMessages, sendWhatsAppMessage, downloadWhatsAppMedia } from "@/lib/whatsapp";
 import { ensureWhatsAppMediaFolder, uploadToPropertyFolder } from "@/lib/google";
 import { findOrCreateContact } from "@/lib/contacts";
-import { runAgentTurn, maybeMaterializeLead, type ConversationSlots } from "@/lib/whatsappAgent";
+import { runAgentTurn, maybeMaterializeLead, buildPriorContext, type ConversationSlots } from "@/lib/whatsappAgent";
 import { createHandoffTask } from "@/lib/whatsappHandoff";
 import { logActivity } from "@/lib/audit";
 
@@ -71,6 +71,10 @@ async function handleInboundMessage(msg: Awaited<ReturnType<typeof parseInboundM
   let conversation = await prisma.whatsAppConversation.findUnique({ where: { waId: msg.from } });
   if (!conversation) {
     const contactId = await findOrCreateContact(msg.profileName, msg.from, "BUYER", null, { source: "WhatsApp AI Agent" });
+    // findOrCreateContact dedupes by phone — an existing Contact here means
+    // a genuine returning lead, so surface their history to Sam rather than
+    // starting the conversation cold.
+    const priorContext = await buildPriorContext(contactId);
     conversation = await prisma.whatsAppConversation.create({
       data: {
         waId: msg.from,
@@ -79,6 +83,7 @@ async function handleInboundMessage(msg: Awaited<ReturnType<typeof parseInboundM
         // First-touch Click-to-WhatsApp ad attribution — only ever set on
         // the message that started the conversation, never overwritten.
         referralJson: msg.referral ? (msg.referral as object) : undefined,
+        slotsJson: priorContext ? ({ intent: "UNCLEAR", priorContext } satisfies ConversationSlots as object) : undefined,
       },
     });
   }
@@ -167,7 +172,10 @@ async function handleInboundMessage(msg: Awaited<ReturnType<typeof parseInboundM
   await prisma.whatsAppMessage.create({ data: { conversationId: conversation.id, direction: "OUT", text: result.reply } });
 
   const lowConfidenceRuns = result.confused ? conversation.lowConfidenceRuns + 1 : 0;
-  const slotsJson: ConversationSlots = { intent: result.intent, requirement: result.requirementSlots, property: result.propertySlots };
+  // Carry the returning-lead summary forward — it's only ever set once, at
+  // conversation creation, and the per-turn result never includes it.
+  const priorContext = (conversation.slotsJson as ConversationSlots | null)?.priorContext;
+  const slotsJson: ConversationSlots = { intent: result.intent, requirement: result.requirementSlots, property: result.propertySlots, priorContext };
   await prisma.whatsAppConversation.update({
     where: { id: conversation.id },
     data: { slotsJson: slotsJson as object, lastOutboundAt: new Date(), lowConfidenceRuns },
